@@ -1,0 +1,28 @@
+requests
+geopandas  
+matplotlib
+netCDF4
+
+# Core Jupyter
+voila>=0.5
+jupyterlab>=4.0
+ipywidgets>=8.0
+jupyterlab-widgets>=3.0
+
+# Geospatial
+geopandas>=0.14
+fiona>=1.9
+pyproj>=3.6
+shapely>=2.0
+ipyleaflet>=0.18
+
+# Climate / NetCDF
+netCDF4>=1.6
+numpy>=1.24
+pandas>=2.0
+
+# Plotting
+matplotlib>=3.7
+
+# HTTP
+requests>=2.31

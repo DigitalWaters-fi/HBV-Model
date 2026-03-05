@@ -1,0 +1,10 @@
+input_text
+shapefile_path,/Users/mujaved21/Downloads/transfer_377547_files_e3a39d43/valumaalueet/Valumaaluejako_taso2.shp
+catchment_id_name,taso1_id
+precipitation_nc_file_path,/Users/mujaved21/Desktop/WE3Unit/HBV-MODEL/Data-folder/rrday_1991.nc
+evapotranspiration_nc_file_path,/Users/mujaved21/Desktop/WE3Unit/HBV-MODEL/Data-folder/ET0_FAO_1991_months_4_to_9.nc
+temperature_nc_file_path,/Users/mujaved21/Desktop/WE3Unit/HBV-MODEL/Data-folder/tday_1991.nc
+output_csv_path,met_input.csv
+urban_land_path,/Users/mujaved21/Desktop/WE3Unit/HBV-MODEL/Data-folder/harvatihea2023/HarvaTiheaTaajama2023.shp
+agricultural_land_path,/Users/mujaved21/Desktop/WE3Unit/HBV-MODEL/Data-folder/maatalousmaa2021/maatalousmaa2021.shp
+csv_parameters_path,hbv_para.csv
