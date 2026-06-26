@@ -1,0 +1,53 @@
+[Unit]
+Description=HBV FastAPI Gateway
+Documentation=https://github.com/your-org/HBV-MODEL
+After=network.target
+# Restart automatically if the process crashes
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=hbv
+Group=hbv
+WorkingDirectory=/opt/hbv/repo
+
+# ── Runtime config ────────────────────────────────────────────────────────
+# Edit these to match your cluster layout.
+# NFS_ROOT must be visible from every compute node.
+Environment="NFS_ROOT=/data/hbv"
+Environment="HBV_NFS_ROOT=/data/hbv"
+Environment="HBV_DB_PATH=/data/hbv/api/jobs.db"
+Environment="HBV_OUTPUT_ROOT=/data/hbv/output"
+Environment="HBV_UPLOAD_ROOT=/data/hbv/uploads"
+Environment="HBV_SLURM_SH=/data/hbv/slurm/hbv_run.sh"
+
+# Tighten to your JupyterHub URL once you know it:
+#   HBV_CORS_ORIGINS=https://jupyter.rahti.csc.fi
+Environment="HBV_CORS_ORIGINS=*"
+
+# Limit each user to 3 concurrent jobs
+Environment="MAX_CONCURRENT_JOBS=3"
+
+# ── Process ───────────────────────────────────────────────────────────────
+ExecStart=/opt/hbv/venv/bin/uvicorn api.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 2 \
+    --log-level info \
+    --access-log
+
+# Redirect stdout/stderr to the journal (journalctl -u hbv-api -f)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hbv-api
+
+Restart=on-failure
+RestartSec=10
+
+# Reasonable hard limits
+LimitNOFILE=65536
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

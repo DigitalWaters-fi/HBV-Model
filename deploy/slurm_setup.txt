@@ -1,0 +1,291 @@
+=============================================================================
+SLURM SETUP — HBV Cluster
+=============================================================================
+Cluster layout:
+  Head node  : 192.168.1.241  (hostname: head)    — slurmctld
+  Compute01  : 192.168.1.129  (hostname: compute01) — slurmd, 32 CPUs, 116GB
+  Compute02  : 192.168.1.79   (hostname: compute02) — slurmd, 32 CPUs, 116GB
+  OS         : Ubuntu 24.04.4 LTS
+  Slurm ver  : 23.11.4
+=============================================================================
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 1 — ADD HOSTNAMES TO /etc/hosts ON ALL 3 NODES
+─────────────────────────────────────────────────────────────────────────────
+# Run on head, compute01, compute02
+echo "192.168.1.241 head
+192.168.1.129 compute01
+192.168.1.79 compute02" | sudo tee -a /etc/hosts
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 2 — SET UP SSH FROM HEAD TO COMPUTE NODES
+─────────────────────────────────────────────────────────────────────────────
+# On head node — generate SSH key
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
+cat ~/.ssh/id_ed25519.pub
+
+# Put public key on NFS so compute nodes can pick it up
+cat ~/.ssh/id_ed25519.pub | sudo tee /data/hbv/head_pubkey.txt
+
+# On compute01 AND compute02
+mkdir -p ~/.ssh
+cat /data/hbv/head_pubkey.txt >> ~/.ssh/authorized_keys
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/authorized_keys
+
+# On head node — clean up and test
+sudo rm /data/hbv/head_pubkey.txt
+ssh ubuntu@192.168.1.129 hostname   # should print: compute01
+ssh ubuntu@192.168.1.79 hostname    # should print: compute02
+
+# NOTE: We could not use scp directly between nodes because compute nodes
+# only had the floating IP key. NFS copy workaround used instead.
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 3 — INSTALL SLURM ON ALL 3 NODES
+─────────────────────────────────────────────────────────────────────────────
+# On head node
+sudo apt install -y slurmd slurmctld munge
+
+# On compute01 AND compute02
+sudo apt install -y slurmd munge
+
+# NOTE: slurm-watcher does not exist — correct package is slurmd slurmctld
+# NOTE: munge must be installed separately on compute nodes if missed
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 4 — CREATE slurm.conf ON HEAD NODE
+─────────────────────────────────────────────────────────────────────────────
+# NOTE: SlurmUser=slurm MUST be in the config — if missing you get
+# "Security violation, ping RPC from uid 64030" errors on compute nodes
+# and nodes stay stuck in unk* state forever.
+
+sudo tee /etc/slurm/slurm.conf << 'EOF'
+# Slurm configuration for HBV cluster
+ClusterName=hbv
+SlurmctldHost=head
+SlurmUser=slurm
+
+# Authentication
+AuthType=auth/munge
+CryptoType=crypto/munge
+
+# Scheduling
+SchedulerType=sched/backfill
+SelectType=select/cons_tres
+SelectTypeParameters=CR_Core_Memory
+
+# Timeouts
+SlurmctldTimeout=120
+SlurmdTimeout=120
+InactiveLimit=0
+MinJobAge=300
+KillWait=30
+Waittime=0
+
+# Logging
+SlurmctldLogFile=/var/log/slurm/slurmctld.log
+SlurmdLogFile=/var/log/slurm/slurmd.log
+SlurmctldPidFile=/run/slurmctld.pid
+SlurmdPidFile=/run/slurmd.pid
+
+# Directories
+StateSaveLocation=/data/hbv/slurm/state
+SlurmdSpoolDir=/var/spool/slurmd
+
+# Ports
+SlurmctldPort=6817
+SlurmdPort=6818
+
+# Job settings
+ReturnToService=2
+ProctrackType=proctrack/pgid
+TaskPlugin=task/none
+
+# Nodes — must match exactly what slurmd -C reports
+# Run "sudo slurmd -C" on a compute node to get correct values
+NodeName=compute01 NodeAddr=192.168.1.129 CPUs=32 Sockets=32 CoresPerSocket=1 ThreadsPerCore=1 RealMemory=115000 State=UNKNOWN
+NodeName=compute02 NodeAddr=192.168.1.79 CPUs=32 Sockets=32 CoresPerSocket=1 ThreadsPerCore=1 RealMemory=115000 State=UNKNOWN
+
+# Partition
+PartitionName=hbv Nodes=compute01,compute02 Default=YES MaxTime=24:00:00 State=UP
+EOF
+
+# NOTE: Initially we had CPUs=32 RealMemory=115000 without Sockets/Cores/Threads.
+# Nodes stayed in unk* because config didn't match slurmd hardware report.
+# Fix: run "sudo slurmd -C" on compute node to get exact values and match them.
+# Output was: CPUs=32 Boards=1 Sockets=32 CoresPerSocket=1 ThreadsPerCore=1
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 5 — CREATE REQUIRED DIRECTORIES
+─────────────────────────────────────────────────────────────────────────────
+# On head node
+sudo mkdir -p /var/log/slurm /data/hbv/slurm/state
+sudo chown slurm:slurm /var/log/slurm
+sudo chown slurm:slurm /data/hbv/slurm/state
+
+# Copy config to NFS so compute nodes can pick it up easily
+sudo cp /etc/slurm/slurm.conf /data/hbv/slurm/slurm.conf
+
+# On compute01 AND compute02
+sudo cp /data/hbv/slurm/slurm.conf /etc/slurm/slurm.conf
+sudo mkdir -p /var/log/slurm /var/spool/slurmd
+sudo chown slurm:slurm /var/log/slurm
+sudo chown slurm:slurm /var/spool/slurmd
+
+# NOTE: if /etc/slurm/ does not exist it means slurmd was not installed yet
+# Fix: sudo apt install -y slurmd munge
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 6 — START SERVICES
+─────────────────────────────────────────────────────────────────────────────
+# On compute01 AND compute02
+sudo systemctl enable --now slurmd
+
+# On head node
+sudo systemctl enable --now slurmctld
+sleep 10
+sinfo
+# Expected: both nodes show idle
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 7 — TEST
+─────────────────────────────────────────────────────────────────────────────
+srun --partition=hbv --nodes=2 --ntasks=2 hostname
+# Expected output: compute01 and compute02
+
+
+─────────────────────────────────────────────────────────────────────────────
+USEFUL COMMANDS
+─────────────────────────────────────────────────────────────────────────────
+# Check node status
+sinfo
+scontrol show nodes
+
+# Check jobs
+squeue
+
+# Submit a test job
+sbatch --wrap="hostname" --partition=hbv
+
+# Check what hardware slurmd sees (use to fill slurm.conf node values)
+sudo slurmd -C
+
+# Check logs
+sudo tail -f /var/log/slurm/slurmctld.log
+ssh ubuntu@192.168.1.129 "sudo tail -f /var/log/slurm/slurmd.log"
+
+# Restart all Slurm services from head node
+ssh ubuntu@192.168.1.129 "sudo systemctl restart slurmd"
+ssh ubuntu@192.168.1.79 "sudo systemctl restart slurmd"
+sudo systemctl restart slurmctld
+
+# After any slurm.conf change — copy to compute nodes and restart
+sudo cp /etc/slurm/slurm.conf /data/hbv/slurm/slurm.conf
+ssh ubuntu@192.168.1.129 "sudo cp /data/hbv/slurm/slurm.conf /etc/slurm/slurm.conf && sudo systemctl restart slurmd"
+ssh ubuntu@192.168.1.79 "sudo cp /data/hbv/slurm/slurm.conf /etc/slurm/slurm.conf && sudo systemctl restart slurmd"
+sudo systemctl restart slurmctld
+
+
+─────────────────────────────────────────────────────────────────────────────
+TROUBLES WE HIT AND HOW WE FIXED THEM
+─────────────────────────────────────────────────────────────────────────────
+
+PROBLEM 1 — Nodes stuck in unk* state after starting services
+─────────────────────────────────────────────────────────────
+Symptom:
+  sinfo shows:  hbv*  up  1-00:00:00  2  unk*  compute[01-02]
+
+Cause: Munge keys were different on different nodes.
+
+Diagnosis — check MD5 hash of munge key on all nodes:
+  sudo md5sum /etc/munge/munge.key
+  ssh ubuntu@192.168.1.129 "sudo md5sum /etc/munge/munge.key"
+  ssh ubuntu@192.168.1.79 "sudo md5sum /etc/munge/munge.key"
+  # All three must be identical
+
+Fix — copy correct key from head to mismatched compute node via NFS:
+  sudo cp /etc/munge/munge.key /data/hbv/munge.key
+  sudo chmod 644 /data/hbv/munge.key
+  ssh ubuntu@192.168.1.129 "sudo systemctl stop munge \
+    && sudo cp /data/hbv/munge.key /etc/munge/munge.key \
+    && sudo chown munge:munge /etc/munge/munge.key \
+    && sudo chmod 400 /etc/munge/munge.key \
+    && sudo systemctl start munge"
+  sudo rm /data/hbv/munge.key
+
+  # Verify all match now
+  sudo md5sum /etc/munge/munge.key
+  ssh ubuntu@192.168.1.129 "sudo md5sum /etc/munge/munge.key"
+  ssh ubuntu@192.168.1.79 "sudo md5sum /etc/munge/munge.key"
+
+
+PROBLEM 2 — Security violation / SlurmUser UID error
+─────────────────────────────────────────────────────
+Symptom in slurmctld.log:
+  error: Security violation, ping RPC from uid 64030
+  error: Do you have SlurmUser configured as uid 64030?
+
+Cause: SlurmUser was not set in slurm.conf so Slurm did not know
+which user was allowed to communicate between controller and workers.
+
+Diagnosis — check slurm UID on all nodes (must match):
+  id slurm
+  ssh ubuntu@192.168.1.129 "id slurm"
+  ssh ubuntu@192.168.1.79 "id slurm"
+  # All showed uid=64030 — UIDs matched, just needed to be declared
+
+Fix — add SlurmUser to slurm.conf and redistribute:
+  echo "SlurmUser=slurm" | sudo tee -a /etc/slurm/slurm.conf
+  sudo cp /etc/slurm/slurm.conf /data/hbv/slurm/slurm.conf
+  ssh ubuntu@192.168.1.129 "sudo cp /data/hbv/slurm/slurm.conf /etc/slurm/slurm.conf && sudo systemctl restart slurmd"
+  ssh ubuntu@192.168.1.79 "sudo cp /data/hbv/slurm/slurm.conf /etc/slurm/slurm.conf && sudo systemctl restart slurmd"
+  sudo systemctl restart slurmctld
+  sleep 10
+  sinfo
+
+
+PROBLEM 3 — Node config mismatch (CPUs/Sockets)
+────────────────────────────────────────────────
+Symptom: Nodes still unk* even after munge fix.
+
+Cause: slurm.conf had CPUs=32 RealMemory=115000 but did not include
+Sockets/CoresPerSocket/ThreadsPerCore so slurmd hardware report
+did not match the config.
+
+Diagnosis — run on compute node to see what hardware slurmd reports:
+  sudo slurmd -C
+  # Output: CPUs=32 Boards=1 Sockets=32 CoresPerSocket=1 ThreadsPerCore=1
+
+Fix — update node lines in slurm.conf to match exactly:
+  # Old:
+  NodeName=compute01 NodeAddr=192.168.1.129 CPUs=32 RealMemory=115000 State=UNKNOWN
+  # New:
+  NodeName=compute01 NodeAddr=192.168.1.129 CPUs=32 Sockets=32 CoresPerSocket=1 ThreadsPerCore=1 RealMemory=115000 State=UNKNOWN
+
+  # Apply with sed on head node:
+  sudo sed -i 's/NodeName=compute01 NodeAddr=192.168.1.129 CPUs=32 RealMemory=115000 State=UNKNOWN/NodeName=compute01 NodeAddr=192.168.1.129 CPUs=32 Sockets=32 CoresPerSocket=1 ThreadsPerCore=1 RealMemory=115000 State=UNKNOWN/' /etc/slurm/slurm.conf
+  sudo sed -i 's/NodeName=compute02 NodeAddr=192.168.1.79  CPUs=32 RealMemory=115000 State=UNKNOWN/NodeName=compute02 NodeAddr=192.168.1.79 CPUs=32 Sockets=32 CoresPerSocket=1 ThreadsPerCore=1 RealMemory=115000 State=UNKNOWN/' /etc/slurm/slurm.conf
+
+
+PROBLEM 4 — PMIx warnings in slurmd.log
+─────────────────────────────────────────
+Symptom in slurmd.log:
+  error: mpi/pmix_v5: can not load PMIx library
+  error: Couldn't load specified plugin name for mpi/pmix
+
+Cause: Ubuntu 24.04 Slurm package expects PMIx but it is not installed.
+
+Impact: NONE — we use our own MPI inside Singularity containers.
+Slurm does not need PMIx for our use case.
+
+Fix: No action needed. Can suppress by installing libpmix-dev but
+not required for HBV workflow.
+
+=============================================================================

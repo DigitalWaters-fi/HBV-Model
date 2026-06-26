@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+*.tif
+*.nc
+output_csv_files/
+local_output/
+local_uploads/
+Data-folder/
+*.docx
+HBV_Deployment_Plan.docx
+venv/
+.env

@@ -1,0 +1,6 @@
+#!/bin/bash
+# Mock squeue — locally jobs finish almost instantly so always return empty
+# (meaning the job is no longer in the queue → API treats it as done).
+# Real squeue format: one line per job with state in column.
+# We return nothing, which the API interprets as "job finished".
+exit 0

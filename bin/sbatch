@@ -1,0 +1,57 @@
+#!/bin/bash
+# Mock sbatch for local Mac testing.
+# Behaves like real sbatch: reads #SBATCH directives, runs the job in the
+# background, prints "Submitted batch job <id>", writes stdout/stderr to files.
+#
+# Supports:
+#   sbatch --array=0-N script.sh   → spawns N+1 tasks
+#   sbatch script.sh               → spawns 1 task
+#
+# Environment variables set by the API are passed through unchanged.
+
+ARRAY_SPEC=""
+SCRIPT=""
+
+# Parse CLI args (same flags real sbatch accepts)
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --array=*)   ARRAY_SPEC="${1#--array=}"; shift ;;
+        --array)     ARRAY_SPEC="$2"; shift 2 ;;
+        --*)         shift; [[ "$1" != -* ]] && shift ;;  # skip unknown flags+values
+        *)           SCRIPT="$1"; shift ;;
+    esac
+done
+
+if [[ -z "$SCRIPT" ]]; then
+    echo "sbatch: no script provided" >&2
+    exit 1
+fi
+
+# Generate a fake numeric job ID
+JOB_ID=$(( RANDOM * RANDOM % 900000 + 100000 ))
+
+# Parse array range  "0-3" → tasks 0 1 2 3
+if [[ -n "$ARRAY_SPEC" ]]; then
+    START=$(echo "$ARRAY_SPEC" | cut -d'-' -f1)
+    END=$(echo   "$ARRAY_SPEC" | cut -d'-' -f2)
+else
+    START=0
+    END=0
+fi
+
+LOG_DIR="${HBV_OUTPUT_DIR:-/tmp}/logs"
+mkdir -p "$LOG_DIR"
+
+# Spawn one background process per array task
+for TASK_ID in $(seq "$START" "$END"); do
+    LOG_OUT="$LOG_DIR/${JOB_ID}_${TASK_ID}.out"
+    LOG_ERR="$LOG_DIR/${JOB_ID}_${TASK_ID}.err"
+
+    SLURM_JOB_ID="$JOB_ID" \
+    SLURM_ARRAY_JOB_ID="$JOB_ID" \
+    SLURM_ARRAY_TASK_ID="$TASK_ID" \
+    SLURM_ARRAY_TASK_COUNT="$(( END - START + 1 ))" \
+    bash "$SCRIPT" >"$LOG_OUT" 2>"$LOG_ERR" &
+done
+
+echo "Submitted batch job $JOB_ID"

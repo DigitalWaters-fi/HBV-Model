@@ -1,0 +1,8 @@
+#!/bin/bash
+# Mock scancel — kill background processes matching the job ID embedded in
+# the output log filename, then exit 0.
+JOB_ID="$1"
+if [[ -z "$JOB_ID" ]]; then exit 0; fi
+pkill -f "SLURM_JOB_ID=$JOB_ID" 2>/dev/null || true
+echo "scancel: cancelled job $JOB_ID (mock)"
+exit 0

@@ -1,0 +1,88 @@
+=============================================================================
+MUNGE AUTHENTICATION SETUP
+=============================================================================
+Munge is required by Slurm so all nodes can authenticate with each other.
+All nodes must share the exact same munge.key file.
+
+Cluster layout:
+  Head node  : 192.168.1.241  (hostname: head)
+  Compute01  : 192.168.1.129  (hostname: compute01)
+  Compute02  : 192.168.1.79   (hostname: compute02)
+=============================================================================
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 1 — INSTALL MUNGE ON ALL 3 NODES (head, compute01, compute02)
+─────────────────────────────────────────────────────────────────────────────
+sudo apt install -y munge
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 2 — GENERATE MUNGE KEY ON HEAD NODE ONLY
+─────────────────────────────────────────────────────────────────────────────
+# Generate the key (ignore "command not found" for create-munge-key,
+# Ubuntu 24.04 generates the key automatically on install)
+sudo systemctl enable --now munge
+
+# Verify key exists
+ls -la /etc/munge/munge.key
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 3 — COPY KEY TO COMPUTE NODES VIA NFS
+─────────────────────────────────────────────────────────────────────────────
+# On head node — place key on shared NFS volume
+sudo cp /etc/munge/munge.key /data/hbv/munge.key
+sudo chmod 644 /data/hbv/munge.key
+
+# On compute01 AND compute02 — copy from NFS
+sudo cp /data/hbv/munge.key /etc/munge/munge.key
+sudo chown munge:munge /etc/munge/munge.key
+sudo chmod 400 /etc/munge/munge.key
+sudo systemctl enable --now munge
+sudo systemctl status munge | grep Active
+# Expected: Active: active (running)
+
+# On head node — clean up key from NFS (security)
+sudo rm /data/hbv/munge.key
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 4 — ADD HOSTNAMES TO /etc/hosts ON ALL 3 NODES
+─────────────────────────────────────────────────────────────────────────────
+# Run this on head, compute01, and compute02
+echo "192.168.1.241 head
+192.168.1.129 compute01
+192.168.1.79 compute02" | sudo tee -a /etc/hosts
+
+# Verify
+ping -c1 compute01
+ping -c1 compute02
+ping -c1 head
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 5 — VERIFY MUNGE WORKS ACROSS NODES
+─────────────────────────────────────────────────────────────────────────────
+# From head node — test munge can talk to compute nodes
+munge -n | ssh ubuntu@192.168.1.129 unmunge
+munge -n | ssh ubuntu@192.168.1.79 unmunge
+# Expected: STATUS: Success (0)
+
+
+─────────────────────────────────────────────────────────────────────────────
+TROUBLESHOOTING
+─────────────────────────────────────────────────────────────────────────────
+# Check munge status
+sudo systemctl status munge
+
+# Check munge logs
+sudo journalctl -u munge -n 30
+
+# If key permissions are wrong
+sudo chown munge:munge /etc/munge/munge.key
+sudo chmod 400 /etc/munge/munge.key
+sudo systemctl restart munge
+
+# If munge.service not found — munge not installed
+sudo apt install -y munge
+=============================================================================

@@ -1,0 +1,71 @@
+# Dockerfile.hpc — HBV compute image for HPC nodes.
+#
+# Built by GitHub Actions, pushed to ghcr.io, then pulled on the HPC and
+# converted to a Singularity/Apptainer image:
+#
+#   singularity pull hbv-compute.sif docker://ghcr.io/<org>/hbv-compute:latest
+#
+# The Slurm script then calls:
+#   singularity exec hbv-compute.sif python /app/hbv_worker.py ...
+#
+# This image contains ONLY compute code (no Jupyter, no dashboard).
+# Frontend runs separately on CSC Rahti JupyterHub.
+
+FROM python:3.11-slim
+
+# ── System deps ───────────────────────────────────────────────────────────
+# openmpi-bin + libopenmpi-dev: needed to compile mpi4py from source.
+# Apptainer on the HPC will bind the host's MPI via PMI/PMIx, so the
+# container MPI version should match the HPC's OpenMPI major version (4.x).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        # geospatial
+        libgdal-dev \
+        gdal-bin \
+        libproj-dev \
+        libgeos-dev \
+        # netCDF / HDF5
+        libnetcdf-dev \
+        libhdf5-dev \
+        # MPI
+        openmpi-bin \
+        libopenmpi-dev \
+        # general build tools
+        gcc \
+        g++ \
+        gfortran \
+        build-essential \
+        pkg-config \
+        curl \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ── Python deps ───────────────────────────────────────────────────────────
+# mpi4py must be compiled against the system OpenMPI — binary wheel won't
+# bind correctly to the HPC's host MPI fabric.
+COPY compute/requirements-compute.txt /tmp/requirements-compute.txt
+
+RUN pip install --no-cache-dir --upgrade pip \
+ && pip install --no-cache-dir --no-binary mpi4py \
+        $(grep mpi4py /tmp/requirements-compute.txt) \
+ && pip install --no-cache-dir \
+        $(grep -v mpi4py /tmp/requirements-compute.txt | grep -v '^#' | grep -v '^$')
+
+# ── Copy compute code ─────────────────────────────────────────────────────
+WORKDIR /app
+
+COPY compute/hbv_S2S.py      /app/hbv_S2S.py
+COPY compute/hbv_prepare.py  /app/hbv_prepare.py
+COPY compute/hbv_worker.py   /app/hbv_worker.py
+COPY compute/predata.csv     /app/predata.csv
+COPY compute/hbv_para.csv    /app/hbv_para.csv
+
+# ── MPI tuning for HPC ────────────────────────────────────────────────────
+# These are overridden at runtime by Slurm/Apptainer if needed.
+ENV OMPI_ALLOW_RUN_AS_ROOT=1
+ENV OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
+# Use shared-memory transport on single-node; host fabric takes over on multi-node
+ENV OMPI_MCA_btl=self,vader
+ENV OMPI_MCA_btl_vader_single_copy_mechanism=none
+
+# Default: print help. The Slurm script always passes explicit args.
+ENTRYPOINT ["python", "/app/hbv_worker.py"]
+CMD ["--help"]

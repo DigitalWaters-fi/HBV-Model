@@ -1,0 +1,125 @@
+<svg viewBox="0 0 860 540" xmlns="http://www.w3.org/2000/svg" role="img" font-family="ui-monospace,monospace" font-size="12">
+  <title>HBV System Architecture</title>
+  <desc>Three-tier architecture: JupyterHub frontend, HPC head node with FastAPI, and compute nodes with Slurm and Singularity over shared NFS.</desc>
+
+  <rect width="860" height="540" fill="#0f172a" rx="12"/>
+  <text x="430" y="32" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700" letter-spacing="1">HBV MODEL — SYSTEM ARCHITECTURE</text>
+
+  <text x="120" y="62" text-anchor="middle" fill="#475569" font-size="10" font-weight="600" letter-spacing="1">CSC RAHTI (KUBERNETES)</text>
+  <text x="430" y="62" text-anchor="middle" fill="#475569" font-size="10" font-weight="600" letter-spacing="1">CPOUTA HEAD NODE</text>
+  <text x="720" y="62" text-anchor="middle" fill="#475569" font-size="10" font-weight="600" letter-spacing="1">CPOUTA COMPUTE</text>
+
+  <line x1="248" y1="50" x2="248" y2="520" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <line x1="560" y1="50" x2="560" y2="520" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="4 3"/>
+
+  <rect x="30" y="80" width="180" height="52" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="120" y="101" text-anchor="middle" fill="#93c5fd" font-size="11" font-weight="700">USER</text>
+  <text x="120" y="118" text-anchor="middle" fill="#60a5fa" font-size="10">Browser / JupyterHub</text>
+
+  <line x1="120" y1="132" x2="120" y2="155" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arr-blue)"/>
+
+  <rect x="30" y="158" width="180" height="68" rx="8" fill="#1e293b" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="120" y="178" text-anchor="middle" fill="#93c5fd" font-size="11" font-weight="700">hbv-frontend image</text>
+  <text x="120" y="194" text-anchor="middle" fill="#64748b" font-size="10">Dockerfile.frontend</text>
+  <text x="120" y="210" text-anchor="middle" fill="#64748b" font-size="10">voila dashboard</text>
+
+  <line x1="120" y1="226" x2="120" y2="249" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arr-blue)"/>
+
+  <rect x="30" y="252" width="180" height="80" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+  <text x="120" y="272" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="700">Dashboard UI</text>
+  <text x="120" y="290" text-anchor="middle" fill="#64748b" font-size="10">Step 1 - Catchments</text>
+  <text x="120" y="305" text-anchor="middle" fill="#64748b" font-size="10">Step 2 - Climate data</text>
+  <text x="120" y="320" text-anchor="middle" fill="#64748b" font-size="10">Step 3/4 - Run</text>
+
+  <rect x="55" y="358" width="130" height="22" rx="4" fill="#052e16" stroke="#16a34a" stroke-width="1"/>
+  <text x="120" y="373" text-anchor="middle" fill="#4ade80" font-size="10">HBV_API_URL</text>
+
+  <line x1="210" y1="290" x2="268" y2="290" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-green)"/>
+  <text x="238" y="283" text-anchor="middle" fill="#4ade80" font-size="9">HTTPS</text>
+
+  <rect x="270" y="80" width="278" height="340" rx="10" fill="#0f1f14" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="409" y="100" text-anchor="middle" fill="#4ade80" font-size="10" font-weight="700">floating IP</text>
+
+  <rect x="290" y="110" width="238" height="42" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="409" y="128" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="700">nginx</text>
+  <text x="409" y="144" text-anchor="middle" fill="#475569" font-size="10">TLS termination · port 443</text>
+
+  <line x1="409" y1="152" x2="409" y2="168" stroke="#334155" stroke-width="1.5" marker-end="url(#arr-gray)"/>
+
+  <rect x="290" y="170" width="238" height="60" rx="6" fill="#1c1917" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="409" y="191" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="700">FastAPI gateway</text>
+  <text x="409" y="207" text-anchor="middle" fill="#78716c" font-size="10">hbv-api.service · port 8000</text>
+  <text x="409" y="221" text-anchor="middle" fill="#78716c" font-size="10">/upload /submit /status /logs</text>
+
+  <line x1="409" y1="230" x2="409" y2="248" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arr-amber)"/>
+
+  <rect x="290" y="250" width="110" height="42" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="345" y="269" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="700">SQLite</text>
+  <text x="345" y="283" text-anchor="middle" fill="#475569" font-size="10">jobs.db</text>
+
+  <rect x="418" y="250" width="110" height="42" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="473" y="269" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="700">sbatch</text>
+  <text x="473" y="283" text-anchor="middle" fill="#475569" font-size="10">Slurm client</text>
+
+  <rect x="290" y="310" width="238" height="42" rx="6" fill="#1e293b" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="409" y="330" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="700">slurmctld</text>
+  <text x="409" y="346" text-anchor="middle" fill="#6d28d9" font-size="10">Slurm controller</text>
+
+  <line x1="473" y1="292" x2="409" y2="310" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arr-purple)"/>
+
+  <rect x="290" y="370" width="238" height="36" rx="6" fill="#1c1917" stroke="#ea580c" stroke-width="1"/>
+  <text x="409" y="388" text-anchor="middle" fill="#fb923c" font-size="11" font-weight="700">NFS server /data/hbv</text>
+  <text x="409" y="402" text-anchor="middle" fill="#7c2d12" font-size="10">uploads/ output/ logs/ slurm/</text>
+
+  <line x1="548" y1="388" x2="566" y2="388" stroke="#ea580c" stroke-width="1.5" stroke-dasharray="4 2" marker-end="url(#arr-orange)"/>
+  <line x1="548" y1="330" x2="566" y2="330" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arr-purple)"/>
+
+  <rect x="570" y="80" width="268" height="190" rx="10" fill="#1a0f2e" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="704" y="100" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="700">compute01 (hpc.5.32core)</text>
+  <rect x="588" y="110" width="232" height="38" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="704" y="128" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="700">slurmd</text>
+  <text x="704" y="143" text-anchor="middle" fill="#475569" font-size="10">Slurm worker daemon</text>
+  <line x1="704" y1="148" x2="704" y2="162" stroke="#334155" stroke-width="1.5" marker-end="url(#arr-gray)"/>
+  <rect x="588" y="164" width="232" height="52" rx="6" fill="#1e293b" stroke="#0ea5e9" stroke-width="1.5"/>
+  <text x="704" y="183" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="700">Singularity</text>
+  <text x="704" y="198" text-anchor="middle" fill="#0369a1" font-size="10">hbv-compute.sif</text>
+  <text x="704" y="212" text-anchor="middle" fill="#0369a1" font-size="10">hbv_worker.py · MPI 32 ranks</text>
+  <rect x="588" y="228" width="232" height="30" rx="6" fill="#0f2a1a" stroke="#16a34a" stroke-width="1"/>
+  <text x="704" y="248" text-anchor="middle" fill="#4ade80" font-size="10">mounts /data/hbv (NFS)</text>
+
+  <rect x="570" y="288" width="268" height="190" rx="10" fill="#1a0f2e" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="704" y="308" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="700">compute02 (hpc.5.32core)</text>
+  <rect x="588" y="318" width="232" height="38" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="704" y="336" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="700">slurmd</text>
+  <text x="704" y="351" text-anchor="middle" fill="#475569" font-size="10">Slurm worker daemon</text>
+  <line x1="704" y1="356" x2="704" y2="370" stroke="#334155" stroke-width="1.5" marker-end="url(#arr-gray)"/>
+  <rect x="588" y="372" width="232" height="52" rx="6" fill="#1e293b" stroke="#0ea5e9" stroke-width="1.5"/>
+  <text x="704" y="391" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="700">Singularity</text>
+  <text x="704" y="406" text-anchor="middle" fill="#0369a1" font-size="10">hbv-compute.sif</text>
+  <text x="704" y="420" text-anchor="middle" fill="#0369a1" font-size="10">hbv_worker.py · MPI 32 ranks</text>
+  <rect x="588" y="436" width="232" height="30" rx="6" fill="#0f2a1a" stroke="#16a34a" stroke-width="1"/>
+  <text x="704" y="456" text-anchor="middle" fill="#4ade80" font-size="10">mounts /data/hbv (NFS)</text>
+
+  <line x1="566" y1="350" x2="570" y2="350" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arr-purple)"/>
+  <line x1="566" y1="440" x2="570" y2="440" stroke="#ea580c" stroke-width="1.5" stroke-dasharray="4 2" marker-end="url(#arr-orange)"/>
+  <line x1="566" y1="388" x2="588" y2="248" stroke="#ea580c" stroke-width="1" stroke-dasharray="3 2" marker-end="url(#arr-orange)"/>
+
+  <rect x="30" y="460" width="500" height="60" rx="6" fill="#0f172a" stroke="#1e293b" stroke-width="1"/>
+  <text x="50" y="478" fill="#475569" font-size="10" font-weight="700">LEGEND</text>
+  <line x1="110" y1="474" x2="140" y2="474" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="145" y="478" fill="#475569" font-size="10">HTTPS</text>
+  <line x1="210" y1="474" x2="240" y2="474" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="245" y="478" fill="#475569" font-size="10">Slurm jobs</text>
+  <line x1="320" y1="474" x2="350" y2="474" stroke="#ea580c" stroke-width="1.5" stroke-dasharray="4 2"/>
+  <text x="355" y="478" fill="#475569" font-size="10">NFS mount</text>
+  <text x="50" y="500" fill="#334155" font-size="10">FLOW: User selects image → dashboard loads → uploads files → submits job → Slurm schedules → Singularity runs HBV → results back</text>
+
+  <defs>
+    <marker id="arr-blue"   markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#3b82f6"/></marker>
+    <marker id="arr-green"  markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#22c55e"/></marker>
+    <marker id="arr-amber"  markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#f59e0b"/></marker>
+    <marker id="arr-purple" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#7c3aed"/></marker>
+    <marker id="arr-orange" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#ea580c"/></marker>
+    <marker id="arr-gray"   markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#475569"/></marker>
+  </defs>
+</svg>

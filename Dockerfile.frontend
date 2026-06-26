@@ -1,0 +1,57 @@
+# Dockerfile.frontend — HBV Dashboard as a JupyterHub single-user server image
+#
+# Build:  docker build -f Dockerfile.frontend -t hbv-frontend:latest .
+# Local:  docker run --rm -p 8888:8888 hbv-frontend:latest
+# Hub:    user selects this image → JupyterHub spawns it → user lands on the voila dashboard
+#
+# The image is based on the official Jupyter Docker stack so it is compatible
+# with any JupyterHub spawner (Kubernetes, Docker, bare-metal).  Voila is
+# configured as the default URL so the user never sees the Jupyter file browser.
+
+FROM quay.io/jupyter/base-notebook:python-3.11
+
+# ── System libraries required by GDAL / Shapely / rasterio ────────────────
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgdal-dev \
+        gdal-bin \
+        libproj-dev \
+        libgeos-dev \
+        libnetcdf-dev \
+        libhdf5-dev \
+        gcc \
+        g++ \
+        pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Python dependencies ────────────────────────────────────────────────────
+USER ${NB_UID}
+
+COPY --chown=${NB_UID}:${NB_GID} frontend/requirements-frontend.txt /tmp/requirements-frontend.txt
+
+# Install everything; GDAL wheels are pre-built for this image's glibc so
+# pip can resolve them without compiling from source.
+RUN pip install --no-cache-dir -r /tmp/requirements-frontend.txt
+
+# ── Dashboard code ─────────────────────────────────────────────────────────
+# Copy the notebook and the dashboard_utils package into the Jupyter home dir.
+COPY --chown=${NB_UID}:${NB_GID} frontend/hbv_dashboard_app.ipynb  /home/jovyan/hbv_dashboard_app.ipynb
+COPY --chown=${NB_UID}:${NB_GID} frontend/dashboard_utils/          /home/jovyan/dashboard_utils/
+
+# ── Voila as the default landing page ─────────────────────────────────────
+# Writing a jupyter_server_config.py into the image means JupyterHub will
+# redirect the user straight to the voila-rendered dashboard on login.
+# No admin changes to jupyterhub_config.py are needed — this is self-contained.
+RUN mkdir -p /home/jovyan/.jupyter && \
+    echo "c.ServerApp.default_url = '/voila/render/hbv_dashboard_app.ipynb'" \
+    > /home/jovyan/.jupyter/jupyter_server_config.py
+
+# ── Runtime environment ────────────────────────────────────────────────────
+# Point the API client at the HPC FastAPI gateway.
+# Override at runtime:  -e HBV_API_URL=http://hpc-head.example.fi:8000
+ENV HBV_API_URL=""
+
+# The base image already sets CMD to start-singleuser.sh which is what
+# JupyterHub calls.  For local testing you can run voila directly:
+#   docker run --rm -p 8888:8888 hbv-frontend:latest \
+#       start.sh voila hbv_dashboard_app.ipynb --no-browser --port=8888

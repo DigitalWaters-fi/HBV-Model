@@ -1,0 +1,130 @@
+=============================================================================
+HBV NFS SERVER SETUP — cPouta
+=============================================================================
+Cluster layout:
+  Head node  : 192.168.1.241  (hostname: head)    hpc.5.16core  80G root + 300G extra volume
+  Compute01  : 192.168.1.129  (hostname: compute01) hpc.5.32core
+  Compute02  : 192.168.1.79   (hostname: compute02) hpc.5.32core
+  OS         : Ubuntu 24.04.4 LTS (Noble Numbat)
+=============================================================================
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 1 — FORMAT AND MOUNT EXTRA VOLUME ON HEAD NODE
+─────────────────────────────────────────────────────────────────────────────
+# Check attached disks — look for unformatted disk (e.g. vdb with no mountpoint)
+lsblk
+
+# Format the extra volume (300G in our case on /dev/vdb)
+# NOTE: if it asks "contains ceph_bluestore, proceed?" type y
+sudo mkfs.ext4 /dev/vdb
+
+# Get the UUID of the new volume (needed for fstab)
+sudo blkid /dev/vdb
+# Example output: UUID="96d39056-3071-4e52-8309-8bd3fd88ea42"
+
+# Copy existing /data/hbv contents to temp location before remounting
+sudo mkdir -p /mnt/hbv_tmp
+sudo mount /dev/vdb /mnt/hbv_tmp
+sudo cp -a /data/hbv/. /mnt/hbv_tmp/
+sudo umount /mnt/hbv_tmp
+
+# Mount the volume permanently at /data/hbv
+sudo umount /data/hbv 2>/dev/null; true
+sudo mount /dev/vdb /data/hbv
+sudo chown -R ubuntu:ubuntu /data/hbv
+
+# Add to fstab so it survives reboot (replace UUID with your actual UUID)
+echo "UUID=96d39056-3071-4e52-8309-8bd3fd88ea42 /data/hbv ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab
+
+# Verify — should show 295G and folders: api logs output slurm uploads
+df -h | grep hbv
+ls /data/hbv
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 2 — INSTALL AND CONFIGURE NFS SERVER ON HEAD NODE
+─────────────────────────────────────────────────────────────────────────────
+# Install NFS server package
+sudo apt update && sudo apt install -y nfs-kernel-server
+
+# Create the shared directory layout
+sudo mkdir -p /data/hbv/{api,uploads,output,logs,slurm}
+sudo chown -R ubuntu:ubuntu /data/hbv
+
+# Configure NFS exports (replace IPs if your compute nodes differ)
+echo "/data/hbv 192.168.1.129(rw,sync,no_subtree_check,no_root_squash)
+/data/hbv 192.168.1.79(rw,sync,no_subtree_check,no_root_squash)" | sudo tee /etc/exports
+
+# Apply exports and start NFS
+sudo exportfs -a
+sudo systemctl enable --now nfs-kernel-server
+
+# Verify exports are active
+sudo exportfs -v
+# Expected output shows both compute IPs with rw,sync,no_root_squash
+
+# After any change to /etc/exports always run:
+sudo exportfs -ra
+sudo systemctl restart nfs-kernel-server
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 3 — MOUNT NFS ON COMPUTE NODES (run on compute01 AND compute02)
+─────────────────────────────────────────────────────────────────────────────
+# Install NFS client
+sudo apt install -y nfs-common
+
+# Create mount point
+sudo mkdir -p /data/hbv
+
+# Mount from head node
+sudo mount 192.168.1.241:/data/hbv /data/hbv
+
+# Make permanent (survives reboot)
+echo "192.168.1.241:/data/hbv /data/hbv nfs rw,sync,hard,intr 0 0" | sudo tee -a /etc/fstab
+
+# Verify — should show 295G
+df -h | grep hbv
+
+
+─────────────────────────────────────────────────────────────────────────────
+TROUBLESHOOTING — STALE FILE HANDLE ON COMPUTE NODES
+─────────────────────────────────────────────────────────────────────────────
+# If you see "Stale file handle" after head node reboot or volume remount:
+sudo umount -f -l /data/hbv
+sudo systemctl daemon-reload
+sudo mount 192.168.1.241:/data/hbv /data/hbv
+df -h | grep hbv
+
+
+─────────────────────────────────────────────────────────────────────────────
+VERIFY NFS WORKS ACROSS ALL NODES
+─────────────────────────────────────────────────────────────────────────────
+# On head node — write a test file
+echo "nfs test from head" > /data/hbv/nfs_test.txt
+
+# On compute01 and compute02 — should see the file immediately
+cat /data/hbv/nfs_test.txt
+
+# Clean up
+rm /data/hbv/nfs_test.txt
+
+
+─────────────────────────────────────────────────────────────────────────────
+USEFUL COMMANDS
+─────────────────────────────────────────────────────────────────────────────
+# Check NFS server status
+sudo systemctl status nfs-kernel-server
+
+# Check what is currently exported
+sudo exportfs -v
+
+# Check NFS mounts on compute nodes
+mount | grep nfs
+
+# Check disk usage on shared volume
+df -h /data/hbv
+
+# Check NFS client connections from head node
+sudo ss -tnp | grep :2049
+=============================================================================
