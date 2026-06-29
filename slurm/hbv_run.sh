@@ -40,4 +40,12 @@ apptainer exec "${SIF}" \
 
 EXIT_CODE=$?
 echo "[SLURM] job=${SLURM_JOB_ID} task=${TASK} finished with exit code ${EXIT_CODE}"
+
+# Write status file so API can detect completion without sacct
+if [[ $EXIT_CODE -eq 0 ]]; then
+    echo '{"ok": 1, "errors": 0, "failed_ids": []}' > "${HBV_OUTPUT_DIR}/task_${TASK}_status.json"
+else
+    echo '{"ok": 0, "errors": 1, "failed_ids": []}' > "${HBV_OUTPUT_DIR}/task_${TASK}_status.json"
+fi
+
 exit ${EXIT_CODE}

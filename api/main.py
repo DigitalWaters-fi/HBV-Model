@@ -233,12 +233,18 @@ async def get_status(job_id: str, user: UserDep):
             await db.update_status(job_id, new_status)
             job['status'] = new_status
 
-    # HPC mode: sync via squeue/sacct
-    if not DEV_MODE and not LOCAL and job['status'] in ('queued', 'running') and job.get('slurm_id'):
-        slurm_status = _query_slurm(job['slurm_id'])
-        if slurm_status and slurm_status != job['status']:
-            await db.update_status(job_id, slurm_status)
-            job['status'] = slurm_status
+    # HPC mode: check task_status.json files first, then fall back to squeue/sacct
+    if not DEV_MODE and not LOCAL and job['status'] in ('queued', 'running') and job.get('output_dir'):
+        task_status = _check_task_status_json(job['output_dir'], job.get('slurm_id'))
+        if task_status:
+            if task_status != job['status']:
+                await db.update_status(job_id, task_status)
+                job['status'] = task_status
+        elif job.get('slurm_id'):
+            slurm_status = _query_slurm(job['slurm_id'])
+            if slurm_status and slurm_status != job['status']:
+                await db.update_status(job_id, slurm_status)
+                job['status'] = slurm_status
 
     return job
 
@@ -433,6 +439,28 @@ def _check_local_done(output_dir: str, slurm_id: str | None) -> str | None:
     if statuses == {'done'}:
         return 'done'
     return None
+
+
+def _check_task_status_json(output_dir: str, slurm_id: str | None) -> str | None:
+    """
+    HPC mode: hbv_run.sh writes task_N_status.json files per array task.
+    Returns 'done', 'failed', or None (still running).
+    """
+    import glob, json as _json
+    files = glob.glob(os.path.join(output_dir, 'task_*_status.json'))
+    if not files:
+        return None
+    any_failed = False
+    for f in files:
+        try:
+            data = _json.loads(open(f).read())
+            if data.get('errors', 0) > 0:
+                any_failed = True
+        except (OSError, ValueError):
+            pass
+    if any_failed:
+        return 'failed'
+    return 'done'
 
 
 # ── Slurm helpers ─────────────────────────────────────────────────────────
