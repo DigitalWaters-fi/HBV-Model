@@ -8,6 +8,7 @@
 #SBATCH --output=/data/hbv/logs/%j_%a.out
 #SBATCH --error=/data/hbv/logs/%j_%a.err
 #SBATCH --partition=hbv
+#SBATCH --chdir=/data/hbv
 #
 # Array size is set by the API: sbatch --array=0-N hbv_run.sh
 # All input paths come from environment variables set by the API.
