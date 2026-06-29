@@ -7,7 +7,7 @@
 #SBATCH --time=04:00:00
 #SBATCH --output=/data/hbv/logs/%j_%a.out
 #SBATCH --error=/data/hbv/logs/%j_%a.err
-#SBATCH --partition=short
+#SBATCH --partition=hbv
 #
 # Array size is set by the API: sbatch --array=0-N hbv_run.sh
 # All input paths come from environment variables set by the API.
@@ -21,7 +21,7 @@ mkdir -p /data/hbv/logs
 
 echo "[SLURM] job=${SLURM_JOB_ID} task=${TASK}/${TOTAL} user=${HBV_USER} started on $(hostname)"
 
-singularity exec "${SIF}" \
+apptainer exec "${SIF}" \
     python /app/hbv_worker.py \
     --job-id     "${HBV_JOB_ID}" \
     --task        "${TASK}" \
