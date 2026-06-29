@@ -209,7 +209,9 @@ def main() -> None:
     import multiprocessing as _mp
     _n_workers = int(os.environ.get('HBV_CPUS_PER_TASK', '') or _mp.cpu_count() or 1)
     _n_workers = min(_n_workers, max(len(my_ids), 1))
-    _log(f"running {len(my_ids)} catchment(s) with pool size {_n_workers}")
+    _phys_cpus = _mp.cpu_count()
+    _log(f"node={os.uname().nodename} physical_cpus={_phys_cpus} "
+         f"pool_size={_n_workers} catchments={len(my_ids)}")
 
     my_results: dict[str, dict] = {}
     my_errors:  dict[str, str]  = {}
