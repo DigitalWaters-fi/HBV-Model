@@ -24,8 +24,9 @@ WORKER_ARGS=(
     --para-csv    "${HBV_PARA_PATH}"
     --catchments  "${HBV_CATCHMENT_IDS}"
     --id-col      "${HBV_ID_COL:-TASO_ID}"
-    --output      "/output"
 )
+# --output is appended separately to avoid bash 3 (macOS) array index issues
+WORKER_OUTPUT_ARG="--output"
 
 if [[ "${USE_DOCKER:-0}" == "1" ]]; then
     # ── Docker mode — mirrors Singularity on HPC ──────────────────────────
@@ -54,7 +55,7 @@ if [[ "${USE_DOCKER:-0}" == "1" ]]; then
         -e HBV_JOB_ID="${HBV_JOB_ID}" \
         -e HBV_USER="${HBV_USER}" \
         hbv-compute:local \
-        "${WORKER_ARGS[@]}"
+        "${WORKER_ARGS[@]}" "$WORKER_OUTPUT_ARG" /output
 
 else
     # ── Direct Python mode — fast inner-loop dev ──────────────────────────
@@ -63,10 +64,7 @@ else
     PYTHON="${REPO_ROOT}/venv/bin/python"
     WORKER="${REPO_ROOT}/compute/hbv_worker.py"
 
-    # Override --output to write directly to the real path (no /output alias)
-    WORKER_ARGS[-1]="${HBV_OUTPUT_DIR}"
-
-    "$PYTHON" "$WORKER" "${WORKER_ARGS[@]}"
+    "$PYTHON" "$WORKER" "${WORKER_ARGS[@]}" "$WORKER_OUTPUT_ARG" "${HBV_OUTPUT_DIR}"
 fi
 
 EXIT_CODE=$?

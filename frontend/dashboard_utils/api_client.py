@@ -17,12 +17,14 @@ API_URL = os.environ.get('HBV_API_URL', 'http://localhost:8000').rstrip('/')
 _TIMEOUT = 30   # seconds for non-streaming requests
 
 
-def _headers() -> dict:
+def _headers(json=True) -> dict:
     """
     JupyterHub injects X-User automatically when requests go through its proxy.
     For local dev, set HBV_DEV_USER so the API doesn't reject the request.
     """
-    h = {'Content-Type': 'application/json'}
+    h = {}
+    if json:
+        h['Content-Type'] = 'application/json'
     dev_user = os.environ.get('HBV_DEV_USER')
     if dev_user:
         h['X-User'] = dev_user
@@ -37,27 +39,18 @@ def upload_file(local_path: str, progress_cb=None) -> str:
     progress_cb(bytes_sent, total_bytes) is called periodically if provided.
     Files are cached by MD5 on the server — re-uploading the same file is instant.
     """
-    import io
-
     file_size = os.path.getsize(local_path)
     filename   = os.path.basename(local_path)
 
-    # Stream upload in chunks so large NetCDF files don't load into RAM
-    def _gen():
-        sent = 0
-        with open(local_path, 'rb') as f:
-            while chunk := f.read(1024 * 1024):
-                yield chunk
-                sent += len(chunk)
-                if progress_cb:
-                    progress_cb(sent, file_size)
-
-    resp = requests.post(
-        f'{API_URL}/upload',
-        headers=_headers(),
-        files={'file': (filename, _gen(), 'application/octet-stream')},
-        timeout=3600,    # large files can take a while
-    )
+    with open(local_path, 'rb') as fh:
+        resp = requests.post(
+            f'{API_URL}/upload',
+            headers=_headers(json=False),
+            files={'file': (filename, fh, 'application/octet-stream')},
+            timeout=3600,
+        )
+    if progress_cb:
+        progress_cb(file_size, file_size)
     resp.raise_for_status()
     return resp.json()['path']
 

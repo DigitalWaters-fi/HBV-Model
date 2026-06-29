@@ -1,0 +1,188 @@
+=============================================================================
+HBV FASTAPI + COMPUTE IMAGE SETUP — HPC Head Node
+=============================================================================
+Head node : 192.168.1.241  floating IP: 86.50.252.160
+OS        : Ubuntu 24.04.4 LTS
+API port  : 8000
+SIF path  : /data/hbv/hbv-compute.sif
+Repo path : /opt/hbv/repo
+Venv path : /opt/hbv/venv
+=============================================================================
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 1 — CLONE REPO
+─────────────────────────────────────────────────────────────────────────────
+cd /opt/hbv
+git clone https://github.com/DigitalWaters-fi/HBV-Model.git repo
+ls repo/
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 2 — CREATE PYTHON VENV AND INSTALL API REQUIREMENTS
+─────────────────────────────────────────────────────────────────────────────
+sudo apt install -y python3-venv python3-pip
+sudo mkdir -p /opt/hbv
+sudo chown ubuntu:ubuntu /opt/hbv
+python3 -m venv /opt/hbv/venv
+/opt/hbv/venv/bin/pip install --upgrade pip
+/opt/hbv/venv/bin/pip install -r /opt/hbv/repo/api/requirements-api.txt
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 3 — INSTALL DOCKER
+─────────────────────────────────────────────────────────────────────────────
+sudo apt install -y docker.io
+sudo usermod -aG docker ubuntu
+newgrp docker
+docker --version
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 4 — BUILD DOCKER COMPUTE IMAGE
+─────────────────────────────────────────────────────────────────────────────
+cd /opt/hbv/repo
+docker build -f Dockerfile.hpc -t hbv-compute:local .
+# Takes ~5 minutes on first run
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 5 — INSTALL APPTAINER ON HEAD NODE
+─────────────────────────────────────────────────────────────────────────────
+sudo apt install -y software-properties-common
+sudo add-apt-repository -y ppa:apptainer/ppa
+sudo apt update && sudo apt install -y apptainer
+apptainer --version
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 6 — CONVERT DOCKER IMAGE TO SINGULARITY SIF
+─────────────────────────────────────────────────────────────────────────────
+sudo apptainer build /data/hbv/hbv-compute.sif docker-daemon://hbv-compute:local
+# Takes ~5-10 minutes on first run
+
+# Verify it works
+apptainer exec /data/hbv/hbv-compute.sif python /app/hbv_worker.py --help
+# Expected: prints all CLI arguments for hbv_worker.py
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 7 — CREATE SYSTEM USER AND NFS DIRECTORIES
+─────────────────────────────────────────────────────────────────────────────
+sudo useradd --system --no-create-home --shell /bin/false hbv
+sudo mkdir -p /data/hbv/{api,uploads,output,logs,slurm}
+sudo chown -R hbv:hbv /data/hbv/api /data/hbv/uploads /data/hbv/output /data/hbv/logs
+sudo cp /opt/hbv/repo/slurm/hbv_run.sh /data/hbv/slurm/hbv_run.sh
+sudo chmod 755 /data/hbv/slurm/hbv_run.sh
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 8 — DEPLOY FASTAPI AS SYSTEMD SERVICE
+─────────────────────────────────────────────────────────────────────────────
+sudo cp /opt/hbv/repo/deploy/hbv-api.service /etc/systemd/system/hbv-api.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now hbv-api
+sudo systemctl status hbv-api
+# Expected: Active: active (running)
+
+# Test locally
+curl http://127.0.0.1:8000/health
+# Expected: {"status":"ok"}
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 9 — OPEN FIREWALL PORT IN CPOUTA
+─────────────────────────────────────────────────────────────────────────────
+# In cPouta dashboard:
+# Network → Security Groups → select group attached to head node
+# Add inbound rule:
+#   Protocol : TCP
+#   Port     : 8000
+#   Source   : 0.0.0.0/0  (or restrict to your IP for security)
+
+# Test from your Mac
+curl http://86.50.252.160:8000/health
+# Expected: {"status":"ok"}
+
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 10 — TEST FRONTEND LOCALLY AGAINST REAL HPC BACKEND
+─────────────────────────────────────────────────────────────────────────────
+# On your Mac — run frontend Docker image pointing at head node API
+docker run -p 8866:8888 \
+  -e HBV_API_URL=http://86.50.252.160:8000 \
+  hbv-frontend:latest
+
+# Open in browser: http://localhost:8866
+
+
+─────────────────────────────────────────────────────────────────────────────
+USEFUL COMMANDS
+─────────────────────────────────────────────────────────────────────────────
+# Check API service status
+sudo systemctl status hbv-api
+
+# Watch API logs live
+sudo journalctl -u hbv-api -f
+
+# Restart API after code change
+cd /opt/hbv/repo && git pull
+sudo systemctl restart hbv-api
+
+# Rebuild SIF after Dockerfile.hpc change
+cd /opt/hbv/repo
+docker build -f Dockerfile.hpc -t hbv-compute:local .
+sudo apptainer build /data/hbv/hbv-compute.sif docker-daemon://hbv-compute:local
+
+# Check SIF size and location
+ls -lh /data/hbv/hbv-compute.sif
+
+# Check Slurm jobs submitted by API
+squeue
+
+
+─────────────────────────────────────────────────────────────────────────────
+TROUBLES WE HIT AND HOW WE FIXED THEM
+─────────────────────────────────────────────────────────────────────────────
+
+PROBLEM 1 — apptainer: command not found on head node
+──────────────────────────────────────────────────────
+Symptom:
+  sudo apptainer build ... → sudo: apptainer: command not found
+
+Cause: Apptainer was installed on compute nodes but not head node.
+
+Fix:
+  sudo apt install -y software-properties-common
+  sudo add-apt-repository -y ppa:apptainer/ppa
+  sudo apt update && sudo apt install -y apptainer
+
+
+PROBLEM 2 — sqlite3.OperationalError: unable to open database file
+───────────────────────────────────────────────────────────────────
+Symptom in journalctl:
+  sqlite3.OperationalError: unable to open database file
+  ERROR: Application startup failed. Exiting.
+
+Cause: hbv system user had no write permission to /data/hbv/api/
+
+Fix:
+  sudo chown -R hbv:hbv /data/hbv/api
+  sudo systemctl restart hbv-api
+
+
+PROBLEM 3 — API not reachable from outside (curl from Mac fails)
+────────────────────────────────────────────────────────────────
+Symptom:
+  curl http://86.50.252.160:8000/health → Couldn't connect to server
+
+Cause: uvicorn was bound to 127.0.0.1 (localhost only) in the service file.
+
+Fix — change --host in service file:
+  sudo sed -i 's/--host 127.0.0.1/--host 0.0.0.0/' /etc/systemd/system/hbv-api.service
+  sudo systemctl daemon-reload
+  sudo systemctl restart hbv-api
+
+Also update deploy/hbv-api.service in repo to use --host 0.0.0.0
+so the fix is preserved for future deployments.
+
+=============================================================================
