@@ -180,22 +180,10 @@ def wait_for_job(job_id: str, poll_interval: float = 10.0,
     update a progress widget.
     Returns the final status dict.
     """
-    last_done = None
-    failed_count = 0
     while True:
         status = get_status(job_id)
         if on_tick:
             on_tick(status)
-        if status['status'] == 'done':
+        if status['status'] in ('done', 'failed', 'cancelled'):
             return status
-        if status['status'] == 'cancelled':
-            return status
-        # Don't give up on 'failed' immediately — the API may correct itself
-        # once all task_status.json files are written. Retry up to 3 times.
-        if status['status'] == 'failed':
-            failed_count += 1
-            if failed_count >= 3:
-                return status
-        else:
-            failed_count = 0
         time.sleep(poll_interval)

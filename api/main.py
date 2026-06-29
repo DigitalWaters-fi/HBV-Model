@@ -250,9 +250,12 @@ async def get_status(job_id: str, user: UserDep):
                 job['status'] = task_status
         elif job.get('slurm_id'):
             slurm_status = _query_slurm(job['slurm_id'])
-            if slurm_status and slurm_status != job['status']:
-                await db.update_status(job_id, slurm_status)
-                job['status'] = slurm_status
+            # Never downgrade to failed via squeue/sacct — task_status.json
+            # files may not all be written yet. Only upgrade queued→running.
+            if slurm_status and slurm_status not in ('failed', 'done'):
+                if slurm_status != job['status']:
+                    await db.update_status(job_id, slurm_status)
+                    job['status'] = slurm_status
 
     return job
 
