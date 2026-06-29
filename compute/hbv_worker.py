@@ -203,19 +203,30 @@ def main() -> None:
     my_ids = _scatter_catchments(catchment_ids)
     _log(f"assigned {len(my_ids)} catchment(s): {my_ids}")
 
-    # ── Run assigned catchments ───────────────────────────────────────────
+    # ── Run assigned catchments in parallel using multiprocessing ─────────
+    # HBV_CPUS_PER_TASK is set by the Slurm script from the API's cpus_per_task.
+    # Each subprocess handles one catchment, so we saturate all allocated CPUs.
+    import multiprocessing as _mp
+    _n_workers = int(os.environ.get('HBV_CPUS_PER_TASK', '') or _mp.cpu_count() or 1)
+    _log(f"running {len(my_ids)} catchment(s) with pool size {_n_workers}")
+
     my_results: dict[str, dict] = {}
     my_errors:  dict[str, str]  = {}
 
-    for sid in my_ids:
+    def _run_one(sid):
         try:
-            result = _run_catchment(cfg, sid)
-            my_results.update(result)
-            _log(f"catchment {sid} DONE")
+            return sid, _run_catchment(cfg, sid), None
         except Exception as exc:
-            tb = traceback.format_exc()
-            _log(f"catchment {sid} ERROR: {exc}")
-            my_errors[sid] = tb
+            return sid, None, traceback.format_exc()
+
+    with _mp.Pool(processes=min(_n_workers, max(len(my_ids), 1))) as pool:
+        for sid, result, err in pool.map(_run_one, my_ids):
+            if err:
+                _log(f"catchment {sid} ERROR: {err}")
+                my_errors[sid] = err
+            else:
+                my_results.update(result)
+                _log(f"catchment {sid} DONE")
 
     # ── Gather results to rank 0 ──────────────────────────────────────────
     if _HAS_MPI and _SIZE > 1:
