@@ -100,6 +100,14 @@ def _run_catchment(cfg: dict, sid_str: str) -> dict:
     # Per-catchment output CSV
     out_csv = os.path.join(temp_dir, f"met_input_{sid_str}.csv")
 
+    # Each catchment gets its own copy of hbv_para.csv so parallel workers
+    # don't race when reading and writing the shared file.
+    catchment_dir = os.path.join(temp_dir, f"catchment_{sid_str}")
+    os.makedirs(catchment_dir, exist_ok=True)
+    catchment_para = os.path.join(catchment_dir, "hbv_para.csv")
+    import shutil as _shutil
+    _shutil.copy2(cfg["hbvpara_path"], catchment_para)
+
     _log(f"hbv_prepare → catchment {raw_sid}")
     prepare_meteorological_and_landuse_data_direct(
         shapefile_path         = shapefile_path,
@@ -111,7 +119,7 @@ def _run_catchment(cfg: dict, sid_str: str) -> dict:
         output_csv_path        = out_csv,
         urban_land_path        = cfg["urban_land_path"],
         agricultural_land_path = cfg["agricultural_land_path"],
-        csv_parameters_path    = cfg["hbvpara_path"],
+        csv_parameters_path    = catchment_para,
     )
 
     # hbv_S2S expects hbv_para.csv in cwd — copy & chdir per rank
