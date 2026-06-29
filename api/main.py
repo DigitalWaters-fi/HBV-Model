@@ -165,7 +165,8 @@ async def submit_job(body: SubmitRequest, user: UserDep):
         # ── Dev mode: run hbv_worker.py directly in a background thread ──
         slurm_id = f'dev-{job_id[:8]}'
         await db.insert_job(job_id, user, body.catchment_ids,
-                            slurm_id=slurm_id, output_dir=output_dir)
+                            slurm_id=slurm_id, output_dir=output_dir,
+                            n_tasks=body.n_nodes)
         await db.update_status(job_id, 'running')
 
         def _run_local():
@@ -216,7 +217,8 @@ async def submit_job(body: SubmitRequest, user: UserDep):
                                 detail='sbatch not found — add bin/ to PATH for local testing')
 
         await db.insert_job(job_id, user, body.catchment_ids,
-                            slurm_id=slurm_id, output_dir=output_dir)
+                            slurm_id=slurm_id, output_dir=output_dir,
+                            n_tasks=body.n_nodes)
 
     job = await db.get_job(job_id)
     return job
@@ -240,7 +242,8 @@ async def get_status(job_id: str, user: UserDep):
 
     # HPC mode: check task_status.json files first, then fall back to squeue/sacct
     if not DEV_MODE and not LOCAL and job['status'] in ('queued', 'running') and job.get('output_dir'):
-        task_status = _check_task_status_json(job['output_dir'], job.get('slurm_id'))
+        task_status = _check_task_status_json(job['output_dir'], job.get('slurm_id'),
+                                               n_tasks=job.get('n_tasks', 1))
         if task_status:
             if task_status != job['status']:
                 await db.update_status(job_id, task_status)
@@ -499,14 +502,18 @@ def _check_local_done(output_dir: str, slurm_id: str | None) -> str | None:
     return None
 
 
-def _check_task_status_json(output_dir: str, slurm_id: str | None) -> str | None:
+def _check_task_status_json(output_dir: str, slurm_id: str | None,
+                             n_tasks: int = 1) -> str | None:
     """
     HPC mode: hbv_run.sh writes task_N_status.json files per array task.
-    Returns 'done', 'failed', or None (still running).
+    Returns 'done', 'failed', or None (still running / not all tasks done yet).
     """
     import glob, json as _json
     files = glob.glob(os.path.join(output_dir, 'task_*_status.json'))
     if not files:
+        return None
+    # Wait until all tasks have written their status file
+    if len(files) < n_tasks:
         return None
     any_failed = False
     for f in files:

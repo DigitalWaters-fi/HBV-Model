@@ -40,19 +40,21 @@ async def init_db() -> None:
                 finished_at  TEXT,
                 slurm_id     TEXT,
                 output_dir   TEXT,
-                error_msg    TEXT
+                error_msg    TEXT,
+                n_tasks      INTEGER NOT NULL DEFAULT 1
             )
         """)
         await db.commit()
 
 
 async def insert_job(job_id: str, user_id: str, catchment_ids: list[str],
-                     slurm_id: str | None = None, output_dir: str | None = None) -> None:
+                     slurm_id: str | None = None, output_dir: str | None = None,
+                     n_tasks: int = 1) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            """INSERT INTO jobs (job_id, user_id, status, catchments, submitted_at, slurm_id, output_dir)
-               VALUES (?, ?, 'queued', ?, ?, ?, ?)""",
-            (job_id, user_id, json.dumps(catchment_ids), _now(), slurm_id, output_dir),
+            """INSERT INTO jobs (job_id, user_id, status, catchments, submitted_at, slurm_id, output_dir, n_tasks)
+               VALUES (?, ?, 'queued', ?, ?, ?, ?, ?)""",
+            (job_id, user_id, json.dumps(catchment_ids), _now(), slurm_id, output_dir, n_tasks),
         )
         await db.commit()
 
