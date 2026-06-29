@@ -284,6 +284,21 @@ async def my_jobs(user: UserDep):
     return await db.get_user_jobs(user)
 
 
+@app.get('/download/{job_id}/{catchment}/{filename}')
+async def download_file(job_id: str, catchment: str, filename: str, user: UserDep):
+    """Download a single output CSV file."""
+    from fastapi.responses import FileResponse
+    job = await db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail='Job not found')
+    if job['user_id'] != user:
+        raise HTTPException(status_code=403, detail='Not your job')
+    path = os.path.join(job['output_dir'], catchment, filename)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail='File not found')
+    return FileResponse(path, filename=filename, media_type='text/csv')
+
+
 @app.delete('/jobs/{job_id}', status_code=204)
 async def cancel_job(job_id: str, user: UserDep):
     """Cancel a queued or running job."""

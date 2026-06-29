@@ -131,6 +131,14 @@ def get_results(job_id: str) -> dict:
     return resp.json()
 
 
+def download_csv(job_id: str, catchment: str, filename: str) -> bytes:
+    """GET /download/{job_id}/{catchment}/{filename} — returns CSV bytes."""
+    resp = requests.get(f'{API_URL}/download/{job_id}/{catchment}/{filename}',
+                        headers=_headers(json=False), timeout=_TIMEOUT)
+    resp.raise_for_status()
+    return resp.content
+
+
 def my_jobs() -> list[dict]:
     """GET /jobs/mine"""
     resp = requests.get(f'{API_URL}/jobs/mine',
