@@ -180,10 +180,17 @@ def wait_for_job(job_id: str, poll_interval: float = 10.0,
     update a progress widget.
     Returns the final status dict.
     """
+    last_done = None
     while True:
         status = get_status(job_id)
         if on_tick:
             on_tick(status)
-        if status['status'] in ('done', 'failed', 'cancelled'):
+        if status['status'] == 'done':
+            last_done = status
+            return status
+        # If we already saw done, don't flip back to failed
+        if status['status'] in ('failed', 'cancelled'):
+            if last_done:
+                return last_done
             return status
         time.sleep(poll_interval)

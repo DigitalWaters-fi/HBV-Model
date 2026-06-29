@@ -241,7 +241,7 @@ async def get_status(job_id: str, user: UserDep):
             job['status'] = new_status
 
     # HPC mode: check task_status.json files first, then fall back to squeue/sacct
-    if not DEV_MODE and not LOCAL and job['status'] in ('queued', 'running') and job.get('output_dir'):
+    if not DEV_MODE and not LOCAL and job['status'] in ('queued', 'running', 'failed') and job.get('output_dir'):
         task_status = _check_task_status_json(job['output_dir'], job.get('slurm_id'),
                                                n_tasks=job.get('n_tasks', 1))
         if task_status:
