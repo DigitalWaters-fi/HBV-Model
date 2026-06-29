@@ -12,3 +12,4 @@ Data-folder/
 HBV_Deployment_Plan.docx
 venv/
 .env
+local_data/
