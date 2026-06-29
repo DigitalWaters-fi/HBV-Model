@@ -159,6 +159,15 @@ def _scatter_catchments(catchment_ids: list[str]) -> list[str]:
     return [cid for i, cid in enumerate(catchment_ids) if i % _SIZE == _RANK]
 
 
+# ── Pool worker (must be at module level so spawn can pickle it) ──────────
+def _run_one(args):
+    sid, cfg = args
+    try:
+        return sid, _run_catchment(cfg, sid), None
+    except Exception:
+        return sid, None, traceback.format_exc()
+
+
 # ── Main ──────────────────────────────────────────────────────────────────
 def main() -> None:
     args = _parse_args()
@@ -232,14 +241,6 @@ def main() -> None:
     else:
         # Use spawn (not fork) so it works inside Apptainer/Singularity containers
         ctx = _mp.get_context('spawn')
-
-        def _run_one(args):
-            sid, cfg_ = args
-            try:
-                return sid, _run_catchment(cfg_, sid), None
-            except Exception:
-                import traceback as _tb
-                return sid, None, _tb.format_exc()
 
         with ctx.Pool(processes=_n_workers) as pool:
             for sid, result, err in pool.map(_run_one, [(sid, cfg) for sid in my_ids]):
