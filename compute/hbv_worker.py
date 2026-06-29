@@ -208,25 +208,45 @@ def main() -> None:
     # Each subprocess handles one catchment, so we saturate all allocated CPUs.
     import multiprocessing as _mp
     _n_workers = int(os.environ.get('HBV_CPUS_PER_TASK', '') or _mp.cpu_count() or 1)
+    _n_workers = min(_n_workers, max(len(my_ids), 1))
     _log(f"running {len(my_ids)} catchment(s) with pool size {_n_workers}")
 
     my_results: dict[str, dict] = {}
     my_errors:  dict[str, str]  = {}
 
-    def _run_one(sid):
-        try:
-            return sid, _run_catchment(cfg, sid), None
-        except Exception as exc:
-            return sid, None, traceback.format_exc()
-
-    with _mp.Pool(processes=min(_n_workers, max(len(my_ids), 1))) as pool:
-        for sid, result, err in pool.map(_run_one, my_ids):
-            if err:
-                _log(f"catchment {sid} ERROR: {err}")
-                my_errors[sid] = err
-            else:
+    if not my_ids:
+        pass  # nothing to do for this task
+    elif _n_workers == 1 or len(my_ids) == 1:
+        # single-process path — avoids fork/spawn overhead and container issues
+        for sid in my_ids:
+            try:
+                result = _run_catchment(cfg, sid)
                 my_results.update(result)
                 _log(f"catchment {sid} DONE")
+            except Exception:
+                tb = traceback.format_exc()
+                _log(f"catchment {sid} ERROR: {tb}")
+                my_errors[sid] = tb
+    else:
+        # Use spawn (not fork) so it works inside Apptainer/Singularity containers
+        ctx = _mp.get_context('spawn')
+
+        def _run_one(args):
+            sid, cfg_ = args
+            try:
+                return sid, _run_catchment(cfg_, sid), None
+            except Exception:
+                import traceback as _tb
+                return sid, None, _tb.format_exc()
+
+        with ctx.Pool(processes=_n_workers) as pool:
+            for sid, result, err in pool.map(_run_one, [(sid, cfg) for sid in my_ids]):
+                if err:
+                    _log(f"catchment {sid} ERROR: {err}")
+                    my_errors[sid] = err
+                else:
+                    my_results.update(result)
+                    _log(f"catchment {sid} DONE")
 
     # ── Gather results to rank 0 ──────────────────────────────────────────
     if _HAS_MPI and _SIZE > 1:
