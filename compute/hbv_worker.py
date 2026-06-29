@@ -122,10 +122,11 @@ def _run_catchment(cfg: dict, sid_str: str) -> dict:
         csv_parameters_path    = catchment_para,
     )
 
-    # hbv_S2S expects hbv_para.csv in cwd — copy & chdir per rank
+    # hbv_S2S expects hbv_para.csv in cwd — use the per-catchment copy
+    # (which now has the correct land use row written by hbv_prepare)
     rank_dir = os.path.join(temp_dir, f"rank_{_RANK}_catchment_{sid_str}")
     os.makedirs(rank_dir, exist_ok=True)
-    shutil.copy(cfg["hbvpara_path"],
+    shutil.copy(catchment_para,
                 os.path.join(rank_dir, "hbv_para.csv"))
     orig_cwd = os.getcwd()
     os.chdir(rank_dir)
