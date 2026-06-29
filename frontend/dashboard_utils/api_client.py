@@ -79,6 +79,14 @@ def upload_shapefile_dir(shp_path: str, progress_cb=None) -> str:
         os.remove(tmp_zip)
 
 
+def get_cluster_info() -> dict:
+    """GET /cluster/info — live Slurm node/CPU availability."""
+    resp = requests.get(f'{API_URL}/cluster/info',
+                        headers=_headers(), timeout=_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def submit_job(
     catchment_ids: list[str],
     shapefile_path: str,
@@ -90,6 +98,7 @@ def submit_job(
     agricultural_land_path: str = '',
     hbvpara_path: str | None = None,
     n_nodes: int = 4,
+    cpus_per_task: int = 4,
 ) -> dict:
     """
     POST /submit — returns the job dict with job_id and initial status.
@@ -105,6 +114,7 @@ def submit_job(
         'urban_land_path':        urban_land_path,
         'agricultural_land_path': agricultural_land_path,
         'n_nodes':                n_nodes,
+        'cpus_per_task':          cpus_per_task,
     }
     if hbvpara_path:
         payload['hbvpara_path'] = hbvpara_path

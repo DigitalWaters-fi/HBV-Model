@@ -3,6 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
+# Note: --cpus-per-task is overridden at submit time by the API
 #SBATCH --mem=8G
 #SBATCH --time=04:00:00
 #SBATCH --output=/data/hbv/logs/%j_%a.out

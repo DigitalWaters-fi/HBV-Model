@@ -109,7 +109,9 @@ class SubmitRequest(BaseModel):
     agricultural_land_path: str
     hbvpara_path:           str = Field(default='/app/hbv_para.csv')
     n_nodes:                int = Field(default=4, ge=1, le=64,
-                                        description='Number of nodes to use')
+                                        description='Number of Slurm array tasks (one per node)')
+    cpus_per_task:          int = Field(default=4, ge=1, le=128,
+                                        description='CPUs per Slurm task')
 
 
 class JobResponse(BaseModel):
@@ -156,6 +158,7 @@ async def submit_job(body: SubmitRequest, user: UserDep):
         'HBV_CATCHMENT_IDS':      ','.join(body.catchment_ids),
         'HBV_ID_COL':             body.id_col,
         'HBV_USER':               user,
+        'HBV_CPUS_PER_TASK':      str(body.cpus_per_task),
     }
 
     if DEV_MODE and not LOCAL:
@@ -199,7 +202,9 @@ async def submit_job(body: SubmitRequest, user: UserDep):
         array_arg = f'0-{body.n_nodes - 1}'
         try:
             result = subprocess.run(
-                ['sbatch', f'--array={array_arg}', SLURM_SCRIPT],
+                ['sbatch', f'--array={array_arg}',
+                 f'--cpus-per-task={body.cpus_per_task}',
+                 SLURM_SCRIPT],
                 capture_output=True, text=True, check=True, env=env,
             )
             slurm_id = result.stdout.strip().split()[-1]
@@ -276,6 +281,44 @@ async def get_results(job_id: str, user: UserDep):
                 files[entry.name] = csvs
 
     return {'job_id': job_id, 'output_dir': output_dir, 'files': files}
+
+
+@app.get('/cluster/info')
+async def cluster_info(user: UserDep):
+    """Return live Slurm cluster resource summary."""
+    info = {'nodes': [], 'summary': {}}
+    try:
+        # sinfo -h -o: nodename, state, CPUs (A/I/O/T = allocated/idle/other/total)
+        r = subprocess.run(
+            ['sinfo', '-h', '--Node', '-o', '%N %t %C %m'],
+            capture_output=True, text=True, timeout=10,
+        )
+        nodes = []
+        total_cpus = idle_cpus = alloc_cpus = 0
+        for line in r.stdout.strip().splitlines():
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            name, state, cpu_str = parts[0], parts[1], parts[2]
+            mem_mb = int(parts[3]) if len(parts) > 3 else 0
+            a, i, o, t = (int(x) for x in cpu_str.split('/'))
+            nodes.append({
+                'name': name, 'state': state,
+                'cpus_alloc': a, 'cpus_idle': i, 'cpus_total': t,
+                'mem_gb': round(mem_mb / 1024, 1),
+            })
+            total_cpus += t; idle_cpus += i; alloc_cpus += a
+        info['nodes'] = nodes
+        info['summary'] = {
+            'total_nodes': len(nodes),
+            'idle_nodes': sum(1 for n in nodes if n['state'] in ('idle', 'idle*')),
+            'total_cpus': total_cpus,
+            'idle_cpus': idle_cpus,
+            'alloc_cpus': alloc_cpus,
+        }
+    except Exception as exc:
+        info['error'] = str(exc)
+    return info
 
 
 @app.get('/jobs/mine', response_model=list[JobResponse])
