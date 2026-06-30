@@ -41,6 +41,22 @@ DEV_MODE = os.environ.get('DEV_MODE', '0') == '1'
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 NFS_ROOT     = os.environ.get('HBV_NFS_ROOT',    '/data/hbv')
+
+# Pre-registered shapefiles on shared NFS — add more Taso levels here when available.
+# Each entry: name shown in UI, NFS path to .shp, shapefile ID column.
+REGISTERED_SHAPEFILES: list[dict] = [
+    {
+        'name':   'Taso 3',
+        'key':    'taso3',
+        'path':   os.environ.get('HBV_SHP_TASO3', f'{NFS_ROOT}/shapefiles/taso3/taso3.shp'),
+        'id_col': 'TASO_ID',
+    },
+    # Uncomment when files are placed on NFS:
+    # {'name': 'Taso 1', 'key': 'taso1', 'path': f'{NFS_ROOT}/shapefiles/taso1/taso1.shp', 'id_col': 'TASO_ID'},
+    # {'name': 'Taso 2', 'key': 'taso2', 'path': f'{NFS_ROOT}/shapefiles/taso2/taso2.shp', 'id_col': 'TASO_ID'},
+    # {'name': 'Taso 4', 'key': 'taso4', 'path': f'{NFS_ROOT}/shapefiles/taso4/taso4.shp', 'id_col': 'TASO_ID'},
+    # {'name': 'Taso 5', 'key': 'taso5', 'path': f'{NFS_ROOT}/shapefiles/taso5/taso5.shp', 'id_col': 'TASO_ID'},
+]
 OUTPUT_ROOT  = os.environ.get('HBV_OUTPUT_ROOT',
                                os.path.join(_REPO_ROOT, 'local_output') if LOCAL else f'{NFS_ROOT}/output')
 UPLOAD_ROOT  = os.environ.get('HBV_UPLOAD_ROOT',
@@ -325,6 +341,21 @@ async def cluster_info(user: UserDep):
     except Exception as exc:
         info['error'] = str(exc)
     return info
+
+
+@app.get('/shapefiles')
+async def list_shapefiles(user: UserDep):
+    """Return pre-registered shapefiles available on shared NFS."""
+    result = []
+    for entry in REGISTERED_SHAPEFILES:
+        result.append({
+            'name':   entry['name'],
+            'key':    entry['key'],
+            'path':   entry['path'],
+            'id_col': entry['id_col'],
+            'exists': os.path.isfile(entry['path']),
+        })
+    return result
 
 
 @app.get('/jobs/mine', response_model=list[JobResponse])

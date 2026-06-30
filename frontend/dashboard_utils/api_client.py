@@ -79,6 +79,14 @@ def upload_shapefile_dir(shp_path: str, progress_cb=None) -> str:
         os.remove(tmp_zip)
 
 
+def get_shapefiles() -> list[dict]:
+    """GET /shapefiles — returns pre-registered shapefiles on shared NFS."""
+    resp = requests.get(f'{API_URL}/shapefiles',
+                        headers=_headers(), timeout=_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def get_cluster_info() -> dict:
     """GET /cluster/info — live Slurm node/CPU availability."""
     resp = requests.get(f'{API_URL}/cluster/info',

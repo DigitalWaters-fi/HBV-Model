@@ -29,6 +29,14 @@ Environment="HBV_CORS_ORIGINS=*"
 # Limit each user to 3 concurrent jobs
 Environment="MAX_CONCURRENT_JOBS=3"
 
+# Pre-registered shapefiles — set each to the actual .shp path on NFS.
+# If the file lives at the default /data/hbv/shapefiles/taso3/taso3.shp you can leave these unset.
+Environment="HBV_SHP_TASO3=/data/hbv/shapefiles/taso3/taso3.shp"
+# Environment="HBV_SHP_TASO1=/data/hbv/shapefiles/taso1/taso1.shp"
+# Environment="HBV_SHP_TASO2=/data/hbv/shapefiles/taso2/taso2.shp"
+# Environment="HBV_SHP_TASO4=/data/hbv/shapefiles/taso4/taso4.shp"
+# Environment="HBV_SHP_TASO5=/data/hbv/shapefiles/taso5/taso5.shp"
+
 # ── Process ───────────────────────────────────────────────────────────────
 ExecStart=/opt/hbv/venv/bin/uvicorn api.main:app \
     --host 0.0.0.0 \
