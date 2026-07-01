@@ -1,63 +1,36 @@
 # Dockerfile.frontend — HBV Dashboard as a JupyterHub single-user server image
-#
-# Build:  docker build -f Dockerfile.frontend -t hbv-frontend:latest .
-# Local:  docker run --rm -p 8888:8888 hbv-frontend:latest
-# Hub:    user selects this image → JupyterHub spawns it → user lands on the voila dashboard
-#
-# The image is based on the official Jupyter Docker stack so it is compatible
-# with any JupyterHub spawner (Kubernetes, Docker, bare-metal).  Voila is
-# configured as the default URL so the user never sees the Jupyter file browser.
-
 FROM quay.io/jupyter/base-notebook:python-3.11
 
-# ── System libraries required by GDAL / Shapely / rasterio ────────────────
+# ── System libraries ───────────────────────────────────────────────────────
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libgdal-dev \
-        gdal-bin \
-        libproj-dev \
-        libgeos-dev \
-        libnetcdf-dev \
-        libhdf5-dev \
-        gcc \
-        g++ \
-        pkg-config \
+        libgdal-dev gdal-bin libproj-dev libgeos-dev \
+        libnetcdf-dev libhdf5-dev gcc g++ pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Python dependencies ────────────────────────────────────────────────────
 USER ${NB_UID}
-
 COPY --chown=${NB_UID}:${NB_GID} frontend/requirements-frontend.txt /tmp/requirements-frontend.txt
-
-# Install everything; GDAL wheels are pre-built for this image's glibc so
-# pip can resolve them without compiling from source.
 RUN pip install --no-cache-dir -r /tmp/requirements-frontend.txt
 
-# ── Dashboard code ─────────────────────────────────────────────────────────
-# Install into /opt/hbv so JupyterHub's persistent home-dir volume
-# does not wipe the files on first login. Must be done as root.
+# ── Dashboard code into /opt/hbv (safe from PVC home-dir mount) ───────────
 USER root
 RUN mkdir -p /opt/hbv && chown ${NB_UID}:${NB_GID} /opt/hbv
-COPY --chown=${NB_UID}:${NB_GID} frontend/hbv_dashboard_app.ipynb  /opt/hbv/hbv_dashboard_app.ipynb
-COPY --chown=${NB_UID}:${NB_GID} frontend/dashboard_utils/          /opt/hbv/dashboard_utils/
+COPY --chown=${NB_UID}:${NB_GID} frontend/hbv_dashboard_app.ipynb /opt/hbv/hbv_dashboard_app.ipynb
+COPY --chown=${NB_UID}:${NB_GID} frontend/dashboard_utils/         /opt/hbv/dashboard_utils/
 
-# ── Voila as the default landing page ─────────────────────────────────────
-# Put config in /etc/jupyter so it is not shadowed by the home-dir volume.
+# ── Startup hook — copies files into home before Jupyter starts ────────────
+# Runs every container start so the PVC mount can never permanently wipe them.
+COPY --chown=root:root deploy/hbv-start-hook.sh /usr/local/bin/before-notebook.d/hbv-start.sh
+RUN chmod +x /usr/local/bin/before-notebook.d/hbv-start.sh
+
+# ── System-wide Jupyter config (not shadowed by home PVC) ─────────────────
 RUN mkdir -p /etc/jupyter && \
-    echo "c.ServerApp.default_url = '/voila/render/hbv_dashboard_app.ipynb'" \
+    printf 'c.ServerApp.default_url = "/voila/render/hbv_dashboard_app.ipynb"\n' \
     > /etc/jupyter/jupyter_server_config.py
 
 USER ${NB_UID}
 
 # ── Runtime environment ────────────────────────────────────────────────────
-# Point the API client at the HPC FastAPI gateway.
-# Override at runtime:  -e HBV_API_URL=http://hpc-head.example.fi:8000
 ENV HBV_API_URL="https://hbv.we3data.com"
-ENV PYTHONPATH="/opt/hbv"
-# Tell Voila where to find notebooks
-ENV VOILA_NOTEBOOK_FOLDER="/opt/hbv"
-
-# The base image already sets CMD to start-singleuser.sh which is what
-# JupyterHub calls.  For local testing you can run voila directly:
-#   docker run --rm -p 8888:8888 hbv-frontend:latest \
-#       start.sh voila hbv_dashboard_app.ipynb --no-browser --port=8888
+ENV PYTHONPATH="/home/jovyan:/opt/hbv"
