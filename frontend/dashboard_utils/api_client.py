@@ -19,15 +19,18 @@ _TIMEOUT = 30   # seconds for non-streaming requests
 
 def _headers(json=True) -> dict:
     """
-    JupyterHub injects X-User automatically when requests go through its proxy.
-    For local dev, set HBV_DEV_USER so the API doesn't reject the request.
+    Send X-User header for API auth.
+    On JupyterHub, JUPYTERHUB_USER is set automatically.
+    For local dev, set HBV_DEV_USER.
     """
     h = {}
     if json:
         h['Content-Type'] = 'application/json'
-    dev_user = os.environ.get('HBV_DEV_USER')
-    if dev_user:
-        h['X-User'] = dev_user
+    user = (os.environ.get('HBV_DEV_USER')
+            or os.environ.get('JUPYTERHUB_USER')
+            or '')
+    if user:
+        h['X-User'] = user
     return h
 
 
