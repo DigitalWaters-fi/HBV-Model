@@ -422,19 +422,33 @@ async def get_logs(job_id: str, user: UserDep, offset: int = 0):
         raise HTTPException(status_code=403, detail='Not your job')
 
     output_dir = job.get('output_dir', '')
-    if not output_dir:
-        return {'lines': [], 'next_offset': 0}
-
-    log_dir = os.path.join(output_dir, 'logs')
-    if not os.path.isdir(log_dir):
-        # Also check one level up (HPC writes logs there too)
-        log_dir = output_dir
+    slurm_id   = job.get('slurm_id', '')
 
     import glob
-    log_files = sorted(
-        glob.glob(os.path.join(log_dir, '*.out')) +
-        glob.glob(os.path.join(log_dir, '*.err'))
-    )
+
+    log_files = []
+
+    # Primary: Slurm writes logs to /data/hbv/logs/{slurm_id}_{task}.out/err
+    slurm_log_dir = os.path.join(NFS_ROOT, 'logs')
+    if slurm_id and os.path.isdir(slurm_log_dir):
+        log_files = sorted(
+            glob.glob(os.path.join(slurm_log_dir, f'{slurm_id}_*.out')) +
+            glob.glob(os.path.join(slurm_log_dir, f'{slurm_id}_*.err'))
+        )
+
+    # Fallback: look inside output_dir
+    if not log_files and output_dir:
+        for d in [os.path.join(output_dir, 'logs'), output_dir]:
+            if os.path.isdir(d):
+                log_files = sorted(
+                    glob.glob(os.path.join(d, '*.out')) +
+                    glob.glob(os.path.join(d, '*.err'))
+                )
+                if log_files:
+                    break
+
+    if not log_files:
+        return {'lines': [], 'next_offset': 0}
 
     # Read all log content as one blob, skip `offset` bytes already sent
     blob = ''
