@@ -35,8 +35,9 @@ RUN pip install --no-cache-dir -r /tmp/requirements-frontend.txt
 
 # ── Dashboard code ─────────────────────────────────────────────────────────
 # Install into /opt/hbv so JupyterHub's persistent home-dir volume
-# does not wipe the files on first login.
-RUN mkdir -p /opt/hbv
+# does not wipe the files on first login. Must be done as root.
+USER root
+RUN mkdir -p /opt/hbv && chown ${NB_UID}:${NB_GID} /opt/hbv
 COPY --chown=${NB_UID}:${NB_GID} frontend/hbv_dashboard_app.ipynb  /opt/hbv/hbv_dashboard_app.ipynb
 COPY --chown=${NB_UID}:${NB_GID} frontend/dashboard_utils/          /opt/hbv/dashboard_utils/
 
@@ -46,8 +47,7 @@ RUN mkdir -p /etc/jupyter && \
     echo "c.ServerApp.default_url = '/voila/render/hbv_dashboard_app.ipynb'" \
     > /etc/jupyter/jupyter_server_config.py
 
-# Symlink so the notebook is also visible in the file browser if needed
-RUN ln -sf /opt/hbv/hbv_dashboard_app.ipynb /opt/conda/share/jupyter/hbv_dashboard_app.ipynb
+USER ${NB_UID}
 
 # ── Runtime environment ────────────────────────────────────────────────────
 # Point the API client at the HPC FastAPI gateway.
