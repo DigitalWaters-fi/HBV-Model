@@ -34,22 +34,28 @@ COPY --chown=${NB_UID}:${NB_GID} frontend/requirements-frontend.txt /tmp/require
 RUN pip install --no-cache-dir -r /tmp/requirements-frontend.txt
 
 # ── Dashboard code ─────────────────────────────────────────────────────────
-# Copy the notebook and the dashboard_utils package into the Jupyter home dir.
-COPY --chown=${NB_UID}:${NB_GID} frontend/hbv_dashboard_app.ipynb  /home/jovyan/hbv_dashboard_app.ipynb
-COPY --chown=${NB_UID}:${NB_GID} frontend/dashboard_utils/          /home/jovyan/dashboard_utils/
+# Install into /opt/hbv so JupyterHub's persistent home-dir volume
+# does not wipe the files on first login.
+RUN mkdir -p /opt/hbv
+COPY --chown=${NB_UID}:${NB_GID} frontend/hbv_dashboard_app.ipynb  /opt/hbv/hbv_dashboard_app.ipynb
+COPY --chown=${NB_UID}:${NB_GID} frontend/dashboard_utils/          /opt/hbv/dashboard_utils/
 
 # ── Voila as the default landing page ─────────────────────────────────────
-# Writing a jupyter_server_config.py into the image means JupyterHub will
-# redirect the user straight to the voila-rendered dashboard on login.
-# No admin changes to jupyterhub_config.py are needed — this is self-contained.
-RUN mkdir -p /home/jovyan/.jupyter && \
+# Put config in /etc/jupyter so it is not shadowed by the home-dir volume.
+RUN mkdir -p /etc/jupyter && \
     echo "c.ServerApp.default_url = '/voila/render/hbv_dashboard_app.ipynb'" \
-    > /home/jovyan/.jupyter/jupyter_server_config.py
+    > /etc/jupyter/jupyter_server_config.py
+
+# Symlink so the notebook is also visible in the file browser if needed
+RUN ln -sf /opt/hbv/hbv_dashboard_app.ipynb /opt/conda/share/jupyter/hbv_dashboard_app.ipynb
 
 # ── Runtime environment ────────────────────────────────────────────────────
 # Point the API client at the HPC FastAPI gateway.
 # Override at runtime:  -e HBV_API_URL=http://hpc-head.example.fi:8000
 ENV HBV_API_URL="https://hbv.we3data.com"
+ENV PYTHONPATH="/opt/hbv"
+# Tell Voila where to find notebooks
+ENV VOILA_NOTEBOOK_FOLDER="/opt/hbv"
 
 # The base image already sets CMD to start-singleuser.sh which is what
 # JupyterHub calls.  For local testing you can run voila directly:
