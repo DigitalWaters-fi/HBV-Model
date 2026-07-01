@@ -49,7 +49,7 @@ RUN mkdir -p /home/jovyan/.jupyter && \
 # ── Runtime environment ────────────────────────────────────────────────────
 # Point the API client at the HPC FastAPI gateway.
 # Override at runtime:  -e HBV_API_URL=http://hpc-head.example.fi:8000
-ENV HBV_API_URL=""
+ENV HBV_API_URL="https://hbv.we3data.com"
 
 # The base image already sets CMD to start-singleuser.sh which is what
 # JupyterHub calls.  For local testing you can run voila directly:
