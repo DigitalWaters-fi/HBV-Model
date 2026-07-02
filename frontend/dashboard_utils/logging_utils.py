@@ -16,7 +16,7 @@ _LOG_ICONS = {
 # Set by the notebook: _log_out_ref[0] = log_output_widget (HTML widget)
 _log_out_ref = [None]
 _log_lines   = []
-_MAX_LINES   = 500
+_MAX_LINES   = 150  # keep small — large HTML strings slow down the widget
 
 # Anchor div — browser keeps scroll at bottom via CSS overflow-anchor
 class WidgetStream:
