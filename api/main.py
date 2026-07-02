@@ -29,6 +29,7 @@ from . import db
 
 # ── Config ────────────────────────────────────────────────────────────────
 MAX_CONCURRENT_JOBS_PER_USER = int(os.environ.get('MAX_CONCURRENT_JOBS', '3'))
+USER_QUOTA_GB = float(os.environ.get('HBV_USER_QUOTA_GB', '100'))
 
 # When DEV_MODE=1, hbv_worker.py is called directly (no sbatch needed).
 # On the real HPC head node leave DEV_MODE unset.
@@ -155,8 +156,27 @@ async def submit_job(body: SubmitRequest, user: UserDep):
                    'Wait for one to finish before submitting again.',
         )
 
+    # Per-user disk quota check
+    user_out = os.path.join(OUTPUT_ROOT, user)
+    if os.path.isdir(user_out):
+        try:
+            r = subprocess.run(['du', '-sb', user_out],
+                               capture_output=True, text=True, timeout=20)
+            used_gb = int(r.stdout.split()[0]) / 1024**3 if r.stdout else 0
+            if used_gb >= USER_QUOTA_GB:
+                raise HTTPException(
+                    status_code=507,
+                    detail=f'Storage quota exceeded: you are using {used_gb:.1f} GB '
+                           f'of your {USER_QUOTA_GB:.0f} GB limit. '
+                           'Delete old jobs from the My Jobs tab to free space.',
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # quota check failure is non-fatal
+
     job_id = str(uuid.uuid4())
-    output_dir = os.path.join(OUTPUT_ROOT, job_id)
+    output_dir = os.path.join(OUTPUT_ROOT, user, job_id)
     os.makedirs(output_dir, exist_ok=True)
 
     # Build environment so hbv_worker can find all input paths
