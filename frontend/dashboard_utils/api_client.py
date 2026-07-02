@@ -175,6 +175,22 @@ def cancel_job(job_id: str) -> None:
     resp.raise_for_status()
 
 
+def get_job_resources(job_id: str) -> dict:
+    """GET /jobs/{job_id}/resources — live Slurm node/CPU/memory stats."""
+    resp = requests.get(f'{API_URL}/jobs/{job_id}/resources',
+                        headers=_headers(), timeout=_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_system_stats() -> dict:
+    """GET /system/stats — disk usage for current user and overall NFS."""
+    resp = requests.get(f'{API_URL}/system/stats',
+                        headers=_headers(), timeout=_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def get_logs(job_id: str, offset: int = 0) -> dict:
     """GET /logs/{job_id}?offset=N — returns {lines: [...], next_offset: N}"""
     resp = requests.get(f'{API_URL}/logs/{job_id}', params={'offset': offset},

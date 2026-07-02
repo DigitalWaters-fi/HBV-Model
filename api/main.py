@@ -463,6 +463,99 @@ async def get_logs(job_id: str, user: UserDep, offset: int = 0):
     return {'lines': lines, 'next_offset': offset + len(new_content)}
 
 
+@app.get('/jobs/{job_id}/resources')
+async def job_resources(job_id: str, user: UserDep):
+    """Live Slurm resource usage for a running job (nodes, CPUs, memory)."""
+    job = await db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail='Job not found')
+    if job['user_id'] != user:
+        raise HTTPException(status_code=403, detail='Not your job')
+
+    slurm_id = job.get('slurm_id')
+    result: dict = {'slurm_id': slurm_id, 'status': job.get('status')}
+
+    if not slurm_id:
+        return result
+
+    # squeue: allocated nodes + CPUs
+    try:
+        r = subprocess.run(
+            ['squeue', '-j', slurm_id, '-h',
+             '--format=%N %C %m %R'],
+            capture_output=True, text=True, timeout=8,
+        )
+        line = r.stdout.strip()
+        if line:
+            parts = line.split()
+            result['nodes']    = parts[0] if len(parts) > 0 else '—'
+            result['cpus']     = int(parts[1]) if len(parts) > 1 else 0
+            result['mem_req']  = parts[2] if len(parts) > 2 else '—'
+            result['reason']   = parts[3] if len(parts) > 3 else ''
+    except Exception as exc:
+        result['squeue_error'] = str(exc)
+
+    # sstat: live memory usage (only works while job is actually running)
+    try:
+        r = subprocess.run(
+            ['sstat', '-j', slurm_id, '--noheader',
+             '--format=AveRSS,MaxRSS,AveCPUFreq'],
+            capture_output=True, text=True, timeout=8,
+        )
+        if r.stdout.strip():
+            first = r.stdout.strip().splitlines()[0].split()
+            result['mem_avg_kb'] = first[0] if first else '—'
+            result['mem_max_kb'] = first[1] if len(first) > 1 else '—'
+    except Exception:
+        pass
+
+    return result
+
+
+@app.get('/system/stats')
+async def system_stats(user: UserDep):
+    """Disk usage for the current user and overall NFS totals."""
+    result: dict = {}
+
+    # Per-user output dir
+    user_out = os.path.join(OUTPUT_ROOT, user)
+    if os.path.isdir(user_out):
+        try:
+            r = subprocess.run(['du', '-sh', user_out],
+                               capture_output=True, text=True, timeout=15)
+            result['user_output_usage'] = r.stdout.split()[0] if r.stdout else '—'
+        except Exception:
+            result['user_output_usage'] = '—'
+    else:
+        result['user_output_usage'] = '0'
+
+    # Overall NFS usage
+    for label, path in [('nfs_output', OUTPUT_ROOT),
+                         ('nfs_uploads', UPLOAD_ROOT),
+                         ('nfs_total', NFS_ROOT)]:
+        if os.path.isdir(path):
+            try:
+                r = subprocess.run(['du', '-sh', '--apparent-size', path],
+                                   capture_output=True, text=True, timeout=20)
+                result[label] = r.stdout.split()[0] if r.stdout else '—'
+            except Exception:
+                result[label] = '—'
+        else:
+            result[label] = '—'
+
+    # Filesystem free space
+    try:
+        st = os.statvfs(NFS_ROOT)
+        free_gb  = round(st.f_bavail * st.f_frsize / 1024**3, 1)
+        total_gb = round(st.f_blocks * st.f_frsize / 1024**3, 1)
+        result['fs_free_gb']  = free_gb
+        result['fs_total_gb'] = total_gb
+    except Exception:
+        pass
+
+    return result
+
+
 @app.get('/health')
 async def health():
     return {'status': 'ok'}

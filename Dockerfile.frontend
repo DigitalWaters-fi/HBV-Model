@@ -19,14 +19,10 @@ RUN mkdir -p /opt/hbv && chown ${NB_UID}:${NB_GID} /opt/hbv
 COPY --chown=${NB_UID}:${NB_GID} frontend/hbv_dashboard_app.ipynb /opt/hbv/hbv_dashboard_app.ipynb
 COPY --chown=${NB_UID}:${NB_GID} frontend/dashboard_utils/         /opt/hbv/dashboard_utils/
 
-# ── Startup hook — copies files into home before Jupyter starts ────────────
-# Runs every container start so the PVC mount can never permanently wipe them.
-COPY --chown=root:root deploy/hbv-start-hook.sh /usr/local/bin/before-notebook.d/hbv-start.sh
-RUN chmod +x /usr/local/bin/before-notebook.d/hbv-start.sh
-
 # ── System-wide Jupyter config (not shadowed by home PVC) ─────────────────
-RUN mkdir -p /etc/jupyter && \
-    printf 'c.ServerApp.default_url = "/voila/render/hbv_dashboard_app.ipynb"\n' \
+RUN mkdir -p /etc/jupyter && printf '%s\n' \
+    'c.ServerApp.default_url = "/voila/render/hbv_dashboard_app.ipynb"' \
+    'c.ServerApp.root_dir = "/opt/hbv"' \
     > /etc/jupyter/jupyter_server_config.py
 
 USER ${NB_UID}
