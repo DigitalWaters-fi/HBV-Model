@@ -593,6 +593,38 @@ async def system_stats(user: UserDep):
     return result
 
 
+@app.delete('/admin/cleanup')
+async def cleanup_old_outputs(user: UserDep, days: int = 30):
+    """
+    Delete output dirs for jobs older than `days` days whose status is terminal.
+    Only deletes the job's output directory — the DB record is kept.
+    """
+    import time as _time
+    cutoff = _time.time() - days * 86400
+    jobs   = await db.all_jobs(limit=10000)
+    removed, freed = 0, 0
+    for job in jobs:
+        if job.get('status') not in ('done', 'failed', 'cancelled'):
+            continue
+        out = job.get('output_dir', '')
+        if not out or not os.path.isdir(out):
+            continue
+        try:
+            mtime = os.path.getmtime(out)
+            if mtime < cutoff:
+                size = sum(
+                    os.path.getsize(os.path.join(r, f))
+                    for r, _, files in os.walk(out) for f in files
+                )
+                shutil.rmtree(out)
+                removed += 1
+                freed   += size
+        except Exception:
+            pass
+    return {'removed_dirs': removed, 'freed_bytes': freed,
+            'freed_mb': round(freed / 1024**2, 1)}
+
+
 @app.get('/health')
 async def health():
     return {'status': 'ok'}
