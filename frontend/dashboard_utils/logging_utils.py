@@ -19,9 +19,6 @@ _log_lines   = []
 _MAX_LINES   = 500
 
 # Anchor div — browser keeps scroll at bottom via CSS overflow-anchor
-_ANCHOR = '<div style="height:32px;overflow-anchor:auto"></div>'
-
-
 class WidgetStream:
     def __init__(self, out): self.out = out
     def write(self, text):
@@ -45,10 +42,11 @@ def log(msg, kind="info"):
         f'<span style="color:#484f58">{ts}</span> '
         f'{icon} <span style="color:{colour}">{msg}</span></div>'
     )
-    _log_lines.append(line)
+    # Newest line at top — no scroll management needed, latest always visible
+    _log_lines.insert(0, line)
     if len(_log_lines) > _MAX_LINES:
-        del _log_lines[:50]  # trim in batches to avoid O(n) on every line
-    lo.value = ''.join(_log_lines) + _ANCHOR
+        del _log_lines[_MAX_LINES:]
+    lo.value = ''.join(_log_lines)
 
 
 def clear_log():
