@@ -478,36 +478,55 @@ async def job_resources(job_id: str, user: UserDep):
     if not slurm_id:
         return result
 
-    # squeue: allocated nodes + CPUs
+    # squeue: allocated nodes + CPUs (only while running/pending)
     try:
         r = subprocess.run(
-            ['squeue', '-j', slurm_id, '-h',
-             '--format=%N %C %m %R'],
+            ['squeue', '-j', slurm_id, '-h', '--format=%N %C %m %R'],
             capture_output=True, text=True, timeout=8,
         )
         line = r.stdout.strip()
         if line:
             parts = line.split()
-            result['nodes']    = parts[0] if len(parts) > 0 else '—'
-            result['cpus']     = int(parts[1]) if len(parts) > 1 else 0
-            result['mem_req']  = parts[2] if len(parts) > 2 else '—'
-            result['reason']   = parts[3] if len(parts) > 3 else ''
+            result['nodes']   = parts[0] if len(parts) > 0 else '—'
+            result['cpus']    = int(parts[1]) if len(parts) > 1 else 0
+            result['mem_req'] = parts[2] if len(parts) > 2 else '—'
     except Exception as exc:
         result['squeue_error'] = str(exc)
 
-    # sstat: live memory usage (only works while job is actually running)
-    try:
-        r = subprocess.run(
-            ['sstat', '-j', slurm_id, '--noheader',
-             '--format=AveRSS,MaxRSS,AveCPUFreq'],
-            capture_output=True, text=True, timeout=8,
-        )
-        if r.stdout.strip():
-            first = r.stdout.strip().splitlines()[0].split()
-            result['mem_avg_kb'] = first[0] if first else '—'
-            result['mem_max_kb'] = first[1] if len(first) > 1 else '—'
-    except Exception:
-        pass
+    # sacct fallback: works after job completes too
+    if 'nodes' not in result or not result.get('nodes'):
+        try:
+            r = subprocess.run(
+                ['sacct', '-j', slurm_id, '--noheader', '--parsable2',
+                 '--format=NodeList,AllocCPUS,AveRSS,MaxRSS'],
+                capture_output=True, text=True, timeout=8,
+            )
+            for line in r.stdout.strip().splitlines():
+                parts = line.split('|')
+                if len(parts) >= 2 and parts[0] and parts[0] != 'batch':
+                    result['nodes']       = parts[0]
+                    result['cpus']        = int(parts[1]) if parts[1].isdigit() else 0
+                    if len(parts) > 2 and parts[2]:
+                        result['mem_avg_kb'] = parts[2]
+                    if len(parts) > 3 and parts[3]:
+                        result['mem_max_kb'] = parts[3]
+                    break
+        except Exception:
+            pass
+
+    # sstat: live memory (only while running)
+    if 'mem_avg_kb' not in result:
+        try:
+            r = subprocess.run(
+                ['sstat', '-j', slurm_id, '--noheader', '--format=AveRSS,MaxRSS'],
+                capture_output=True, text=True, timeout=8,
+            )
+            if r.stdout.strip():
+                first = r.stdout.strip().splitlines()[0].split()
+                result['mem_avg_kb'] = first[0] if first else '—'
+                result['mem_max_kb'] = first[1] if len(first) > 1 else '—'
+        except Exception:
+            pass
 
     return result
 
