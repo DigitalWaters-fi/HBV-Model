@@ -1,4 +1,3 @@
-from IPython.display import HTML as _HTML
 from datetime import datetime
 
 _LOG_ICONS = {
@@ -14,13 +13,19 @@ _LOG_ICONS = {
     "search": ("🔍", "#79c0ff"),
 }
 
-# Set by the notebook: _log_out_ref[0] = log_output_widget
+# Set by the notebook: _log_out_ref[0] = log_output_widget (HTML widget)
 _log_out_ref = [None]
+_log_lines   = []
+_MAX_LINES   = 500
+
+# Anchor div — browser keeps scroll at bottom via CSS overflow-anchor
+_ANCHOR = '<div style="height:1px;overflow-anchor:auto"></div>'
 
 
 class WidgetStream:
     def __init__(self, out): self.out = out
-    def write(self, text): self.out.append_stdout(text)
+    def write(self, text):
+        log(text.rstrip(), 'info')
     def flush(self): pass
 
 
@@ -34,10 +39,20 @@ def log(msg, kind="info"):
         return
     icon, colour = _LOG_ICONS.get(kind, ("💬", "#cdd9e5"))
     ts = datetime.now().strftime("%H:%M:%S")
-    html = (
+    line = (
         f'<div style="font-family:monospace;font-size:12px;'
         f'padding:2px 6px;border-bottom:1px solid #21262d;line-height:1.6">'
         f'<span style="color:#484f58">{ts}</span> '
         f'{icon} <span style="color:{colour}">{msg}</span></div>'
     )
-    lo.append_display_data(_HTML(html))
+    _log_lines.append(line)
+    if len(_log_lines) > _MAX_LINES:
+        del _log_lines[:50]  # trim in batches to avoid O(n) on every line
+    lo.value = ''.join(_log_lines) + _ANCHOR
+
+
+def clear_log():
+    _log_lines.clear()
+    lo = _get_log_out()
+    if lo is not None:
+        lo.value = ''
