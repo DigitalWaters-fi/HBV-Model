@@ -19,7 +19,7 @@ _log_lines   = []
 _MAX_LINES   = 500
 
 # Anchor div — browser keeps scroll at bottom via CSS overflow-anchor
-_ANCHOR = '<div style="height:1px;overflow-anchor:auto"></div>'
+_ANCHOR = '<div style="height:32px;overflow-anchor:auto"></div>'
 
 
 class WidgetStream:
