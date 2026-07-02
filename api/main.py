@@ -528,6 +528,24 @@ async def job_resources(job_id: str, user: UserDep):
         except Exception:
             pass
 
+    # Expand node expression (e.g. compute[01-02]) into individual node names
+    node_str = result.get('nodes', '')
+    if node_str and node_str != '—':
+        try:
+            r = subprocess.run(
+                ['scontrol', 'show', 'hostnames', node_str],
+                capture_output=True, text=True, timeout=8,
+            )
+            names = [l.strip() for l in r.stdout.strip().splitlines() if l.strip()]
+            if names:
+                total_cpus = result.get('cpus', 0)
+                cpus_each  = total_cpus // len(names) if names else 0
+                result['nodes_list'] = [
+                    {'name': n, 'cpus': cpus_each} for n in names
+                ]
+        except Exception:
+            pass
+
     return result
 
 
